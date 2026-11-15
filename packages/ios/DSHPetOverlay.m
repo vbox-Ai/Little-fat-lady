@@ -39,9 +39,15 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 @interface DSHPetWindow : UIWindow
 @property (nonatomic, weak) UIView *touchTarget;
+@property (nonatomic, copy) void (^onLayout)(void);
 @end
 
 @implementation DSHPetWindow
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if (self.onLayout) self.onLayout();   // 旋转/分屏/安全区变化都会走到这里，比监听通知可靠
+}
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *v = [super hitTest:point withEvent:event];
@@ -124,10 +130,12 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(onPan:)];
     [_box addGestureRecognizer:pan];
 
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(onCoordinateSpaceChange:)
-                                                 name:UIWindowSceneDidUpdateCoordinateSpaceNotification
-                                               object:scene];
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+
+    __weak DSHPetOverlay *weakSelf = self;
+    _window.onLayout = ^{
+        [weakSelf relayoutForCurrentBounds];
+    };
 
     DSHPetLog(@"render", @"attach-ok", @"info", @{
         @"size": @(size),
@@ -183,15 +191,16 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     DSHPetLog(@"render", @"drag-end", @"info", @{ @"x": @(c.x), @"y": @(c.y) });
 }
 
-- (void)onCoordinateSpaceChange:(NSNotification *)n {
-    UIWindowScene *s = (UIWindowScene *)n.object;
-    CGRect r = s.coordinateSpace.bounds;
-    _window.frame = r;
+- (void)relayoutForCurrentBounds {
+    if (!_window || !_box) return;
+    CGRect r = _scene ? _scene.coordinateSpace.bounds : _window.bounds;
+    if (!CGRectEqualToRect(_window.frame, r)) _window.frame = r;
     CGSize b = r.size;
+    if (b.width <= 0 || b.height <= 0) return;
     _box.center = CGPointMake(b.width * [_cfg[@"centerX"] doubleValue],
                               b.height * [_cfg[@"centerY"] doubleValue]);
     [self clampAndPersist];
-    DSHPetLog(@"render", @"relayout", @"info", @{ @"w": @(b.width), @"h": @(b.height) });
+    DSHPetLog(@"render", @"relayout", @"debug", @{ @"w": @(b.width), @"h": @(b.height) });
 }
 
 - (void)detach {
