@@ -23,7 +23,9 @@ static NSString *const kCatOther = @"other";
 @property (nonatomic, copy, nullable) NSString *currentClip;
 @end
 
-@implementation DSHPetAnimator
+@implementation DSHPetAnimator {
+    BOOL _started;
+}
 
 + (instancetype)shared {
     static DSHPetAnimator *s;
@@ -58,14 +60,28 @@ static NSString *const kCatOther = @"other";
     for (NSString *r in DSHPetAssetRoots()) {
         if (![scanDirs containsObject:r]) [scanDirs addObject:r];
     }
+    // 选"素材最多"的那个根：运行目录里可能只剩几段老的占位演示片（5 段），
+    // 而真素材（114 段）在越狱根里；只认第一个有料的根会导致一直播占位片。
+    NSMutableDictionary<NSString *, NSMutableDictionary *> *perRoot = [NSMutableDictionary dictionary];
+    NSUInteger bestCount = 0;
+    NSString *bestDir = nil;
     for (NSString *scanDir in scanDirs) {
+        [self.groups removeAllObjects];
         [self buildIndexFromDir:scanDir];
-        if (self.groups.count) break;   // 第一个有料的根目录说了算，避免两套素材混着抽
+        NSUInteger n = 0;
+        for (NSString *k in self.groups) n += self.groups[k].count;
+        perRoot[scanDir] = [self.groups copy] ?: @{};
+        if (n > bestCount) { bestCount = n; bestDir = scanDir; }
+    }
+    [self.groups removeAllObjects];
+    if (bestDir) {
+        NSDictionary *picked = perRoot[bestDir];
+        for (NSString *k in picked) self.groups[k] = [picked[k] mutableCopy];
     }
 
     NSMutableDictionary *counts = [NSMutableDictionary dictionary];
     for (NSString *k in self.groups) counts[k] = @(self.groups[k].count);
-    DSHPetLog(@"anim", @"index", @"info", @{ @"dir": self.dir, @"roots": scanDirs, @"groups": counts });
+    DSHPetLog(@"anim", @"index", @"info", @{ @"dir": self.dir, @"picked": bestDir ?: @"none", @"clips": @(bestCount), @"groups": counts });
 }
 
 - (void)buildIndexFromDir:(NSString *)scanDir {
@@ -125,6 +141,8 @@ static NSString *const kCatOther = @"other";
 #pragma mark - 调度
 
 - (void)startWithDirectory:(NSString *)dir {
+    if (_started) { DSHPetLog(@"anim", @"start-skip", @"debug", @{ @"reason": @"already-started" }); return; }
+    _started = YES;
     self.dir = dir;
     [self buildIndex];
     [self scheduleIdle];

@@ -9,6 +9,12 @@
 //   2. 拿不到 scene 不硬猜，记 error 日志后退出，等下一次前台通知重试；
 //   3. 不 hook 别的类，不改 SpringBoard 自身行为，卸载即彻底消失。
 
+// 逃生开关：桌面上出任何异常，只要存在这个文件，插件就完全不加载任何东西。
+// 用 Filza 新建一个空文件即可，不需要终端。
+static BOOL DSHPetKillSwitch(void) {
+    return [[NSFileManager defaultManager] fileExistsAtPath:@"/var/mobile/Library/DSHPet/disabled"];
+}
+
 static UIWindowScene *DSHPetFindScene(id springboard) {
     // 首选 SpringBoard 私有 ivar（iOS 13+ 一直存在，用 KVC 避免硬编 ivar 偏移）
     @try {
@@ -51,6 +57,10 @@ static void DSHPetTryAttach(id springboard, NSInteger attempt) {
 __attribute__((constructor))
 static void dshpet_ctor(void) {
     @autoreleasepool {
+        if (DSHPetKillSwitch()) {
+            DSHPetBootLog(@"boot", @{ @"disabled": @YES });
+            return;
+        }
         DSHPetBootLog(@"boot", @{
             @"exe": [[NSBundle mainBundle] bundleIdentifier] ?: @"?",
             @"os": [[UIDevice currentDevice] systemVersion] ?: @"?",
@@ -64,6 +74,10 @@ static void dshpet_ctor(void) {
 
 - (void)applicationDidFinishLaunching:(id)application {
     %orig;
+    if (DSHPetKillSwitch()) {
+        DSHPetBootLog(@"springboard-ready", @{ @"disabled": @YES });
+        return;
+    }
     DSHPetBootLog(@"springboard-ready", @{ @"stage": @"s2" });
     @try {
         // 启动瞬间 scene 还没连上，给 1.2s 让 SpringBoard 布好桌面
