@@ -3,6 +3,7 @@
 #import "DSHPetBoot.h"
 #import "DSHPetOverlay.h"
 #import "DSHPetPlayer.h"
+#import "DSHPetAnimator.h"
 
 // S2：透明浮层骨架 + 一个可拖动的方块。
 // 本阶段只证明四件事，不做宠物：
@@ -166,6 +167,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         _box.layer.cornerRadius = 0.0;
         _box.layer.borderWidth = 0.0;
         _box.accessibilityLabel = @"小肥娘";
+        [[DSHPetAnimator shared] startWithDirectory:@"/var/mobile/Library/DSHPet/assets"];
     } else {
         _box.accessibilityLabel = @"小肥娘（占位，未装素材）";
     }
@@ -222,6 +224,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 #pragma mark 交互
 
 - (void)onTap:(UITapGestureRecognizer *)g {
+    [[DSHPetAnimator shared] handleTap];
     NSInteger taps = [_cfg[@"taps"] integerValue] + 1;
     _cfg[@"taps"] = @(taps);
     DSHPetSaveUIConfig(_cfg);
@@ -265,6 +268,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 }
 
 - (void)onPan:(UIPanGestureRecognizer *)g {
+    if (g.state == UIGestureRecognizerStateBegan) [[DSHPetAnimator shared] handleDragBegin];
     CGPoint t = [g translationInView:_window];
     if (g.state == UIGestureRecognizerStateBegan) {
         _panStartCenter = _box.center;
@@ -272,6 +276,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         _box.center = CGPointMake(_panStartCenter.x + t.x, _panStartCenter.y + t.y);
     } else if (g.state == UIGestureRecognizerStateEnded || g.state == UIGestureRecognizerStateCancelled) {
         [self clampAndPersist];
+        [[DSHPetAnimator shared] handleDragEnd];
     }
 }
 

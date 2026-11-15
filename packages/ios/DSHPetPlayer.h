@@ -6,6 +6,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// S3 只负责"能放、能循环、消失时停"，动画状态机在 S4。
 @interface DSHPetPlayer : NSObject
 
+/// S4：切到指定片段（状态机用）。不会重建 layer，只换 AVPlayerItem。
+- (BOOL)playClipAtURL:(NSURL *)url;
+
 + (instancetype)shared;
 
 /// 把播放层挂到宿主 view 上；size 是宠物在屏幕上的显示尺寸。

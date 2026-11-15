@@ -1,10 +1,10 @@
 #!/bin/sh
 # DSHPet postinst
 #
-# 绝对禁止在这里 respring / killall SpringBoard：
-# dpkg 还在 configure 阶段时把 SpringBoard 干掉，Sileo 的安装事务会被打断，
-# 留下 "dpkg 被中断"（half-configured）状态，之后一开 Sileo 就注销。
-# 需要生效时由用户在 Sileo 结束时点"重启 SpringBoard"，或者自己重启桌面。
+# 规矩：这里绝对不 respring / 不 killall SpringBoard。
+# 之前有一版在这里杀桌面，dpkg 事务被打断 → 包停在 half-configured，
+# 之后每次收尾都重跑 dpkg 保存的旧 postinst 副本，形成"一开 Sileo 就注销"的死循环。
+# 需要生效时由用户自己在 Sileo 里点"重启 SpringBoard"。
 set -u
 
 JBROOT=""
@@ -18,14 +18,18 @@ mkdir -p "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs" 2>/dev/null 
 chown -R mobile:mobile "$RUN_DIR" 2>/dev/null || true
 chmod 755 "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs" 2>/dev/null || true
 
-# 只在用户没有自己的素材时铺演示片，不覆盖 main.mov
+# 只在用户没有真素材（main.mov / main.mp4）时铺演示片，绝不覆盖用户自己的文件。
 if [ ! -e "$RUN_ASSETS/main.mov" ] && [ ! -e "$RUN_ASSETS/main.mp4" ]; then
-  if [ -f "$PKG_ASSETS/demo.mov" ]; then
-    cp -f "$PKG_ASSETS/demo.mov" "$RUN_ASSETS/demo.mov" 2>/dev/null || true
-    chown mobile:mobile "$RUN_ASSETS/demo.mov" 2>/dev/null || true
-    chmod 644 "$RUN_ASSETS/demo.mov" 2>/dev/null || true
-  fi
+  for f in idle turn click drag sleep; do
+    SRC="$PKG_ASSETS/$f.mov"
+    DST="$RUN_ASSETS/$f.mov"
+    if [ -f "$SRC" ] && [ ! -e "$DST" ]; then
+      cp -f "$SRC" "$DST" 2>/dev/null || true
+      chown mobile:mobile "$DST" 2>/dev/null || true
+      chmod 644 "$DST" 2>/dev/null || true
+    fi
+  done
 fi
 
-echo "小肥娘已安装：重启桌面（或点 Sileo 的"重启 SpringBoard"）后生效。"
+echo "小肥娘已安装：在 Sileo 里点“重启 SpringBoard”后生效。"
 exit 0

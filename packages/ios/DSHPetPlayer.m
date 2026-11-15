@@ -69,15 +69,11 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     return url;
 }
 
-- (void)reloadAsset {
-    NSURL *url = [self findFirstMovie];
-    if (!url) {
-        DSHPetLog(@"render", @"player-no-asset", @"info", @{ @"dir": kPetAssetDir });
-        [self teardown];
-        return;
-    }
+- (BOOL)playClipAtURL:(NSURL *)url {
+    if (!url) return NO;
     if (_currentURL && [_currentURL.path isEqualToString:url.path] && _player) {
-        return;
+        [self play];
+        return YES;
     }
     _currentURL = url;
 
@@ -111,6 +107,17 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         @"tracks": @(asset.tracks.count),
     });
     [self play];
+    return YES;
+}
+
+- (void)reloadAsset {
+    NSURL *url = [self findFirstMovie];
+    if (!url) {
+        DSHPetLog(@"render", @"player-no-asset", @"info", @{ @"dir": kPetAssetDir });
+        [self teardown];
+        return;
+    }
+    [self playClipAtURL:url];
 }
 
 - (void)observeEnd {
