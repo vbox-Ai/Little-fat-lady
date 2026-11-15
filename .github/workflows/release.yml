@@ -1,4 +1,4 @@
-﻿name: release
+name: release
 
 # S1 起启用：push 到 main 或打 tag 时，自动 bump 版本 → 编两个 deb（roothide + rootless，
 # ARCHS = arm64 arm64e）→ 发 Release 并附 SHA256SUMS。
