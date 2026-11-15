@@ -66,3 +66,8 @@
 - 0.1.0-40 那次"dpkg 被中断 / 一开 Sileo 就注销桌面"是 `postinst` 里杀 SpringBoard 造成的：dpkg 事务没结束就丢桌面 → 包停在 half-configured，之后每次收尾都重跑 dpkg 保存的**旧 postinst 副本**，形成死循环。规矩：维护脚本里绝不重启桌面，卸载/升级逻辑放 `postrm` 按 `$1` 分支。
 - rootless 包给 `layout/` 下所有路径加 `/var/jb` 前缀，所以数据文件不要放 `layout/var/mobile/...`；放 `layout/Library/Application Support/<Name>/`，由 `postinst` 拷到运行目录。
 - 发布脚本别在 PowerShell here-string 里放中文：会被控制台编码打坏；正确做法是 python 写 UTF-8 JSON 文件，node 读文件发请求，二进制再用 `Invoke-RestMethod -InFile` 上传。
+
+- 配置里判断"用户有没有配过"不能用绝对阈值（`size < 120 → 300`），用户捏到 118pt 是合法值 —— 这就是"缩小后注销又变大"的根因。宽度一律 `sizeRatio`（屏宽比例）优先、`size` 兜底、都没有才给默认 30%。
+- 额外 UIWindow 的 `windowLevel = 1100` 会被短剧/视频类 App 的全屏窗口压住（宠物"消失"）；实测抬到 **1500**（状态栏 1000 之上、系统弹窗 2000 之下）才稳，老配置要写迁移，只改默认值救不了已装用户。
+- `AVPlayer` 被 audio session 中断后不会自己恢复；必须 `.ambient + mixWithOthers` + 中断结束/回前台恢复 + 3 秒看门狗，否则一播视频宠物就定格。
+- 往实现段插方法时 `str.replace("@end", ...)` 会命中**类扩展的** `@end`，方法体落进 `@interface` → `expected ';' after method prototype`；必须 `rindex("@end")` 或用方法名做锚点。
