@@ -18,6 +18,7 @@
 - 文档只增不改历史：每次修订在头部加 changelog，正文用 vN 标记。
 
 ## 关键决策
+- 出包只走 ci.yml 一条线；S0 留下的 release.yml 已删（它缺 S1 的六处修复，永远红，会误判成构建失败）。
 
 - 技术路线：SpringBoard 注入 + `UIWindow`（`windowLevel` 高于普通 App）+ AVPlayerLayer 播 HEVC-alpha，透明 WKWebView 只画气泡/菜单/设置。
 - 双包：`com.vboxai.littlefatlady`（roothide）与 `.rootless`，`ARCHS = arm64 arm64e`，两包 Conflicts 互斥。
