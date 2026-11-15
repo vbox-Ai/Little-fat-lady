@@ -45,7 +45,19 @@ static NSString *const kPetAssetDir = @"/var/mobile/Library/DSHPet/assets";
     }
     if (!cands.count) return nil;
     [cands sortUsingSelector:@selector(compare:)];
-    return [NSURL fileURLWithPath:[kPetAssetDir stringByAppendingPathComponent:cands.firstObject]];
+
+    // 优先级：main.*（真素材约定名）> 任何非 demo 文件 > 内置 demo.mov
+    NSString *picked = nil;
+    for (NSString *n in cands) {
+        if ([n.lowercaseString hasPrefix:@"main."]) { picked = n; break; }
+    }
+    if (!picked) {
+        for (NSString *n in cands) {
+            if (![n.lowercaseString isEqualToString:@"demo.mov"]) { picked = n; break; }
+        }
+    }
+    if (!picked) picked = cands.firstObject;
+    return [NSURL fileURLWithPath:[kPetAssetDir stringByAppendingPathComponent:picked]];
 }
 
 - (void)reloadAsset {

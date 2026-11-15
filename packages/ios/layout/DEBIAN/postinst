@@ -5,3 +5,8 @@ mkdir -p /var/mobile/Library/DSHPet/logs
 chown -R mobile:mobile /var/mobile/Library/DSHPet
 chmod 755 /var/mobile/Library/DSHPet /var/mobile/Library/DSHPet/logs
 exit 0
+
+# 素材目录（S3 起用于放视频；deb 里带了一段 demo.mov）
+mkdir -p /var/mobile/Library/DSHPet/assets
+chown -R mobile:mobile /var/mobile/Library/DSHPet
+chmod 755 /var/mobile/Library/DSHPet /var/mobile/Library/DSHPet/assets
