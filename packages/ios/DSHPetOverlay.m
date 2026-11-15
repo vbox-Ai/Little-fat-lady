@@ -104,6 +104,13 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     _window.opaque = NO;
     _window.hidden = NO;
     _window.userInteractionEnabled = YES;
+    // 这层必须"彻底透明"：不透明标记、组透明度、光栅化、默认阴影任何一项留着，
+    // 旋转/截图时都会显出一个黑底或阴影方块。
+    _window.layer.opaque = NO;
+    _window.layer.backgroundColor = [UIColor clearColor].CGColor;
+    _window.layer.allowsGroupOpacity = NO;
+    _window.layer.shouldRasterize = NO;
+    _window.layer.shadowOpacity = 0.0;
 
     UIViewController *root = [[UIViewController alloc] init];
     root.view.backgroundColor = [UIColor clearColor];
@@ -255,11 +262,23 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 }
 
 - (void)onOrientationChange:(NSNotification *)n {
+    // 旋转期间把浮层整层藏掉：SpringBoard 会对窗口做快照再旋转，
+    // 我们这层额外窗口若参与动画，就会在屏幕上留下黑边/阴影残影。
+    [self setLayerVisible:NO];
     __weak DSHPetOverlay *weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         [weakSelf relayoutForCurrentBounds];
+        [weakSelf setLayerVisible:YES];
     });
+}
+
+- (void)setLayerVisible:(BOOL)visible {
+    if (!_window) return;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];   // 不要自带动画，避免又生成一层残影
+    _window.alpha = visible ? 1.0 : 0.0;
+    [CATransaction commit];
 }
 
 - (void)detach {
