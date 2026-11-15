@@ -137,6 +137,12 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         [weakSelf relayoutForCurrentBounds];
     };
 
+    // 旋转时 layoutSubviews 可能早于最终尺寸，再补一次延迟校正
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(onOrientationChange:)
+                                                 name:UIDeviceOrientationDidChangeNotification
+                                               object:nil];
+
     DSHPetLog(@"render", @"attach-ok", @"info", @{
         @"size": @(size),
         @"level": @(_window.windowLevel),
@@ -174,33 +180,86 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     }
 }
 
-// 手势保护区（方案 §15.1）：顶部 40pt / 左右 20pt / 底部 34pt 不放方块，避免和系统手势抢
-- (void)clampAndPersist {
-    CGSize b = _window.bounds.size;
+// 手势保护区（方案 §15.1）：顶部 40pt / 左右 20pt / 底部 34pt 不放方块，避免和系统手势抢。
+// 用 safeAreaInsets 兜住带刘海/Home 条的机型，取两者更大的那个边距。
+- (CGPoint)clampedCenter:(CGPoint)c inSize:(CGSize)b {
+    if (b.width <= 0 || b.height <= 0) return c;
     CGFloat half = _box.bounds.size.width / 2.0;
-    CGFloat minX = 20.0 + half, maxX = b.width - 20.0 - half;
-    CGFloat minY = 40.0 + half, maxY = b.height - 34.0 - half;
-    CGPoint c = _box.center;
+    UIEdgeInsets sa = _window.safeAreaInsets;
+    CGFloat left = MAX(20.0, sa.left + 8.0);
+    CGFloat right = MAX(20.0, sa.right + 8.0);
+    CGFloat top = MAX(40.0, sa.top + 8.0);
+    CGFloat bottom = MAX(34.0, sa.bottom + 8.0);
+
+    CGFloat minX = left + half, maxX = b.width - right - half;
+    CGFloat minY = top + half, maxY = b.height - bottom - half;
+
+    if (minX > maxX) minX = maxX = b.width / 2.0;      // 极端尺寸下退化为居中，绝不丢
+    if (minY > maxY) minY = maxY = b.height / 2.0;
+
     c.x = MAX(minX, MIN(maxX, c.x));
     c.y = MAX(minY, MIN(maxY, c.y));
+    return c;
+}
+
+- (void)clampAndPersist {
+    CGSize b = _window.bounds.size;
+    if (b.width <= 0 || b.height <= 0) { b = _scene.coordinateSpace.bounds.size; }
+    if (b.width <= 0 || b.height <= 0) return;
+
+    CGPoint c = [self clampedCenter:_box.center inSize:b];
     _box.center = c;
 
-    _cfg[@"centerX"] = @(b.width > 0 ? c.x / b.width : 0.8);
-    _cfg[@"centerY"] = @(b.height > 0 ? c.y / b.height : 0.2);
+    _cfg[@"centerX"] = @(c.x / b.width);
+    _cfg[@"centerY"] = @(c.y / b.height);
     DSHPetSaveUIConfig(_cfg);
-    DSHPetLog(@"render", @"drag-end", @"info", @{ @"x": @(c.x), @"y": @(c.y) });
+    DSHPetLog(@"render", @"drag-end", @"info", @{ @"x": @(c.x), @"y": @(c.y), @"w": @(b.width), @"h": @(b.height) });
 }
 
 - (void)relayoutForCurrentBounds {
     if (!_window || !_box) return;
-    CGRect r = _scene ? _scene.coordinateSpace.bounds : _window.bounds;
-    if (!CGRectEqualToRect(_window.frame, r)) _window.frame = r;
-    CGSize b = r.size;
+
+    // 关键：不要无脑把 window.frame 设成 scene bounds。
+    // 旋转时 UIKit 会让挂在 scene 上的 window 自己跟过去；我们再设一次就等于"转两次"，
+    // 方块会被转到屏幕外——这正是 S2 真机「横屏看不见、转回竖屏又好了」的原因。
+    // 只在 window 尺寸明显落后于场景时修正一次。
+    CGRect sb = _scene ? _scene.coordinateSpace.bounds : _window.bounds;
+    CGSize wb = _window.bounds.size;
+    BOOL stale = (sb.size.width > 0 && sb.size.height > 0) &&
+                 !CGSizeEqualToSize(wb, sb.size) &&
+                 (fabs(wb.width - sb.height) < 1.0 || fabs(wb.height - sb.width) < 1.0);
+    if (stale) {
+        _window.frame = sb;
+        wb = _window.bounds.size;
+    }
+
+    CGSize b = wb.width > 0 && wb.height > 0 ? wb : sb.size;
     if (b.width <= 0 || b.height <= 0) return;
-    _box.center = CGPointMake(b.width * [_cfg[@"centerX"] doubleValue],
-                              b.height * [_cfg[@"centerY"] doubleValue]);
-    [self clampAndPersist];
-    DSHPetLog(@"render", @"relayout", @"debug", @{ @"w": @(b.width), @"h": @(b.height) });
+
+    CGPoint c = CGPointMake(b.width * [_cfg[@"centerX"] doubleValue],
+                            b.height * [_cfg[@"centerY"] doubleValue]);
+    _box.center = [self clampedCenter:c inSize:b];
+    _box.hidden = NO;
+
+    DSHPetLog(@"render", @"relayout", @"info", @{
+        @"w": @(b.width),
+        @"h": @(b.height),
+        @"winW": @(_window.bounds.size.width),
+        @"winH": @(_window.bounds.size.height),
+        @"staleFixed": @(stale),
+        @"orientation": @([[UIDevice currentDevice] orientation]),
+        @"boxX": @(_box.center.x),
+        @"boxY": @(_box.center.y),
+        @"boxHidden": @(_box.hidden),
+    });
+}
+
+- (void)onOrientationChange:(NSNotification *)n {
+    __weak DSHPetOverlay *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [weakSelf relayoutForCurrentBounds];
+    });
 }
 
 - (void)detach {
