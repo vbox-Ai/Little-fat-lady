@@ -19,7 +19,9 @@
 
 ## 关键决策
 - 出包只走 ci.yml 一条线；S0 留下的 release.yml 已删（它缺 S1 的六处修复，永远红，会误判成构建失败）。
-- 额外 `UIWindow` **不会被 UIKit 自动改尺寸**（只有主窗口会）：旋转收尾必须把 `frame` 硬同步到 `scene.coordinateSpace.bounds`，否则"只有一个横屏方向看得见"。
+- 额外 `UIWindow` **不会被 UIKit 自动改尺寸**（只有主窗口会）：旋转收尾必须把 `frame` 硬同步到 `scene.coordinateSpace.bounds`，**且 origin 强制归零**——右横时该 bounds 带非零 origin，照抄会把窗口推出屏幕（"看不见但没死"）。
+- 旋转期间隐藏浮层要 `hidden = YES`，只把 `alpha` 归零不够：窗口仍参与合成，SpringBoard 快照里留着它，就是旋转时外围那圈黑边/阴影。
+
 - 旋转类通知会因**微小倾斜**连发：处理前先比 `scene.coordinateSpace.bounds.size`，**尺寸没变就绝不动 alpha**（否则就是闪一下）；连续旋转用 token 只让最后一次收尾生效。
 - `@implementation` 内不能写前向声明（clang 报 `expected method body` / `duplicate declaration`）；声明放 `@interface X ()` 扩展里。
 
