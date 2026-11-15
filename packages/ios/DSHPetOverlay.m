@@ -77,6 +77,11 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     return inst;
 }
 
+- (CGRect)sceneBoundsIfValid;
+- (void)relayoutAndSettle:(BOOL)settle;
+- (CGPoint)clampedCenter:(CGPoint)c inSize:(CGSize)b;
+- (void)setLayerVisible:(BOOL)visible;
+
 + (BOOL)attachToScene:(UIWindowScene *)scene {
     if (!scene) {
         DSHPetLog(@"render", @"attach-failed", @"error", @{ @"reason": @"nil-scene" });
@@ -148,6 +153,16 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(onOrientationChange:)
                                                  name:UIDeviceOrientationDidChangeNotification
+                                               object:nil];
+    // 场景尺寸变化（含 180° 翻转：两次横屏之间场景尺寸不变，只有它有事件）。
+    // 16.5 SDK 里没有这个常量，所以用字符串名注册，避免编译期符号缺失。
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(onOrientationChange:)
+                                                 name:@"UIWindowSceneDidUpdateCoordinateSpaceNotification"
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(onOrientationChange:)
+                                                 name:@"UIApplicationDidChangeStatusBarOrientationNotification"
                                                object:nil];
 
     DSHPetLog(@"render", @"attach-ok", @"info", @{
@@ -223,41 +238,54 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     DSHPetLog(@"render", @"drag-end", @"info", @{ @"x": @(c.x), @"y": @(c.y), @"w": @(b.width), @"h": @(b.height) });
 }
 
+- (CGRect)sceneBoundsIfValid {
+    if (!_scene) return CGRectZero;
+    return _scene.coordinateSpace.bounds;
+}
+
 - (void)relayoutForCurrentBounds {
+    [self relayoutAndSettle:NO];
+}
+
+- (void)relayoutAndSettle:(BOOL)settle {
     if (!_window || !_box) return;
 
-    // 关键：不要无脑把 window.frame 设成 scene bounds。
-    // 旋转时 UIKit 会让挂在 scene 上的 window 自己跟过去；我们再设一次就等于"转两次"，
-    // 方块会被转到屏幕外——这正是 S2 真机「横屏看不见、转回竖屏又好了」的原因。
-    // 只在 window 尺寸明显落后于场景时修正一次。
-    CGRect sb = _scene ? _scene.coordinateSpace.bounds : _window.bounds;
-    CGSize wb = _window.bounds.size;
-    BOOL stale = (sb.size.width > 0 && sb.size.height > 0) &&
-                 !CGSizeEqualToSize(wb, sb.size) &&
-                 (fabs(wb.width - sb.size.height) < 1.0 || fabs(wb.height - sb.size.width) < 1.0);
-    if (stale) {
+    CGRect sb = [self sceneBoundsIfValid];
+    BOOL sceneValid = sb.size.width > 1.0 && sb.size.height > 1.0;
+    BOOL hard = NO;
+
+    // 旋转动画结束后才允许"硬同步"：此时 UIKit 不会再转第二次，设 frame 是安全的。
+    // 额外窗口不会被 UIKit 自动跟着旋转改尺寸（只有主窗口会），
+    // 这就是「只有一个横屏方向看得见方块」的根：那个方向的窗口尺寸没变过来，方块算到了窗口外面。
+    if (settle && sceneValid && !CGSizeEqualToSize(_window.bounds.size, sb.size)) {
+        _window.transform = CGAffineTransformIdentity;
         _window.frame = sb;
-        wb = _window.bounds.size;
+        hard = YES;
     }
 
-    CGSize b = wb.width > 0 && wb.height > 0 ? wb : sb.size;
-    if (b.width <= 0 || b.height <= 0) return;
+    CGSize b = _window.bounds.size;
+    if (b.width <= 1.0 || b.height <= 1.0) return;
 
-    CGPoint c = CGPointMake(b.width * [_cfg[@"centerX"] doubleValue],
-                            b.height * [_cfg[@"centerY"] doubleValue]);
-    _box.center = [self clampedCenter:c inSize:b];
+    CGPoint want = CGPointMake(b.width * [_cfg[@"centerX"] doubleValue],
+                               b.height * [_cfg[@"centerY"] doubleValue]);
+    CGPoint got = [self clampedCenter:want inSize:b];
+    BOOL forced = !CGPointEqualToPoint(want, got);
+    _box.center = got;
     _box.hidden = NO;
 
     DSHPetLog(@"render", @"relayout", @"info", @{
         @"w": @(b.width),
         @"h": @(b.height),
-        @"winW": @(_window.bounds.size.width),
-        @"winH": @(_window.bounds.size.height),
-        @"staleFixed": @(stale),
+        @"sceneW": @(sb.size.width),
+        @"sceneH": @(sb.size.height),
+        @"hardSync": @(hard),
+        @"settle": @(settle),
+        @"tf": [NSString stringWithFormat:@"%.2f/%.2f/%.2f/%.2f",
+                _window.transform.a, _window.transform.b, _window.transform.c, _window.transform.d],
         @"orientation": @([[UIDevice currentDevice] orientation]),
         @"boxX": @(_box.center.x),
         @"boxY": @(_box.center.y),
-        @"boxHidden": @(_box.hidden),
+        @"forced": @(forced),
     });
 }
 
@@ -266,9 +294,15 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     // 我们这层额外窗口若参与动画，就会在屏幕上留下黑边/阴影残影。
     [self setLayerVisible:NO];
     __weak DSHPetOverlay *weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)),
+    // 两段收尾：0.55s 先把窗口对回场景尺寸（动画已结束，不会转两次）；
+    // 1.10s 再定位一次并显示，覆盖「180° 翻转时场景尺寸不变、只有坐标空间事件」的情形。
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.55 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        [weakSelf relayoutForCurrentBounds];
+        [weakSelf relayoutAndSettle:YES];
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.10 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [weakSelf relayoutAndSettle:YES];
         [weakSelf setLayerVisible:YES];
     });
 }
