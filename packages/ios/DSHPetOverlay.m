@@ -2,6 +2,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "DSHPetBoot.h"
 #import "DSHPetOverlay.h"
+#import "DSHPetPlayer.h"
 
 // S2：透明浮层骨架 + 一个可拖动的方块。
 // 本阶段只证明四件事，不做宠物：
@@ -126,16 +127,30 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     root.view.backgroundColor = [UIColor clearColor];
     _window.rootViewController = root;
 
+    // 宠物宿主：宽 = size，高按 2160x1215 素材比例（1.778）算。
     CGFloat size = [_cfg[@"size"] doubleValue];
-    _box = [[UIView alloc] initWithFrame:CGRectMake(0, 0, size, size)];
+    if (size < 120) size = 300;
+    CGFloat petW = size;
+    CGFloat petH = round(size * 1215.0 / 2160.0);
+    _box = [[UIView alloc] initWithFrame:CGRectMake(0, 0, petW, petH)];
     _box.backgroundColor = [UIColor colorWithRed:0.15 green:0.78 blue:0.55 alpha:0.85];
     _box.layer.cornerRadius = 16.0;
     _box.layer.borderWidth = 1.0;
     _box.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.65].CGColor;
     _box.userInteractionEnabled = YES;
-    _box.accessibilityLabel = @"小肥娘测试方块";
     [root.view addSubview:_box];
     _window.touchTarget = _box;
+
+    // S3：有素材就把方块换成 HEVC-alpha 视频；没素材保持方块当占位。
+    BOOL hasPet = [[DSHPetPlayer shared] attachToHostView:_box size:CGSizeMake(petW, petH)];
+    if (hasPet) {
+        _box.backgroundColor = [UIColor clearColor];
+        _box.layer.cornerRadius = 0.0;
+        _box.layer.borderWidth = 0.0;
+        _box.accessibilityLabel = @"小肥娘";
+    } else {
+        _box.accessibilityLabel = @"小肥娘（占位，未装素材）";
+    }
 
     CGSize b = _window.bounds.size;
     _box.center = CGPointMake(b.width * [_cfg[@"centerX"] doubleValue],
@@ -211,7 +226,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 // 用 safeAreaInsets 兜住带刘海/Home 条的机型，取两者更大的那个边距。
 - (CGPoint)clampedCenter:(CGPoint)c inSize:(CGSize)b {
     if (b.width <= 0 || b.height <= 0) return c;
-    CGFloat half = _box.bounds.size.width / 2.0;
+    CGFloat half = MAX(_box.bounds.size.width, _box.bounds.size.height) / 2.0;
     UIEdgeInsets sa = _window.safeAreaInsets;
     CGFloat left = MAX(20.0, sa.left + 8.0);
     CGFloat right = MAX(20.0, sa.right + 8.0);
