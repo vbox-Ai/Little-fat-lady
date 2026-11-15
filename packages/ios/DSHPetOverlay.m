@@ -234,7 +234,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     CGSize wb = _window.bounds.size;
     BOOL stale = (sb.size.width > 0 && sb.size.height > 0) &&
                  !CGSizeEqualToSize(wb, sb.size) &&
-                 (fabs(wb.width - sb.height) < 1.0 || fabs(wb.height - sb.width) < 1.0);
+                 (fabs(wb.width - sb.size.height) < 1.0 || fabs(wb.height - sb.size.width) < 1.0);
     if (stale) {
         _window.frame = sb;
         wb = _window.bounds.size;
