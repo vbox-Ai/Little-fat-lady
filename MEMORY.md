@@ -73,3 +73,5 @@
 - 往实现段插方法时 `str.replace("@end", ...)` 会命中**类扩展的** `@end`，方法体落进 `@interface` → `expected ';' after method prototype`；必须 `rindex("@end")` 或用方法名做锚点。
 - 素材"两套同类别"会互相抢抽签：平铺 `idle.mov`（占位 demo）和 `idle/001-idle.mov`（真素材）都归 `idle`，一半概率抽到占位。规矩：包装里只留分桶，平铺演示片一律不进 deb。
 - `postinst` 不再重启桌面之后，"装了但看起来没变"绝大多数是**没手动重启 SpringBoard**，旧 dylib 还在跑；发布说明必须把这一步写成第一条。
+- 素材不要靠 `postinst` 拷：roothide 类越狱里维护脚本跑在假根、SpringBoard 看到的是 `/var/jb`，`cp` 会静默失败还被 `|| true` 吞掉。规矩：运行期在多候选根里找素材（`DSHPetAssetRoots()`），命中记日志。
+- 项目里 warning 即 error（`-Werror`）：挪代码后遗留的未用变量（`NSFileManager *fm`）会直接卡住 CI，改完审视一遍新增/删除的局部变量。
