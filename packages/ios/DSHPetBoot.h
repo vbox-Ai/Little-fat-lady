@@ -5,16 +5,18 @@
 // mod：boot / render / physics / bubble / net / prefs / assets …
 // lvl：debug / info / warn / error
 
+NS_ASSUME_NONNULL_BEGIN
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 void DSHPetLog(NSString *mod, NSString *evt, NSString *lvl, NSDictionary *_Nullable kv);
 void DSHPetBootLog(NSString *event, NSDictionary *_Nullable kv);
+NSString *DSHPetLogPathForModule(NSString *mod);
 
 #ifdef __cplusplus
 }
 #endif
 
-// 日志文件路径（mod 维度），导出/清理页会用
-NSString *DSHPetLogPathForModule(NSString *mod);
+NS_ASSUME_NONNULL_END
