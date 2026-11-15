@@ -1,5 +1,6 @@
-#import <Foundation/Foundation.h>
+﻿#import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import "DSHPetBoot.h"
 
 // S1 只做一件事：证明"注入成功 + 能落盘"。
 // 日志格式与方案 §8 的 runtime.jsonl 一致（JSONL，一行一条）。
