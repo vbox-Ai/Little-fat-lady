@@ -1,4 +1,5 @@
 #import "DSHPetPlayer.h"
+#import "DSHPetAssets.h"
 #import <AVFoundation/AVAudioSession.h>
 #import "DSHPetBoot.h"
 #import <AVFoundation/AVFoundation.h>
@@ -41,36 +42,71 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:dir error:NULL];
     if (!names.count) return nil;
 
-    NSMutableArray<NSString *> *cands = [NSMutableArray array];
+    // 两种落盘方式都要认：
+    //  A) 平铺：main.mov / idle.mov
+    //  B) 分桶：idle/001-idle.mov、play/012-play.mov（上游素材包 + 0.1.0-53 起只有这种）
+    // 早先只扫顶层，分桶布局下返回 nil → hasPet=NO → 桌面只剩绿色占位方块。
+    NSMutableArray<NSString *> *top = [NSMutableArray array];
+    NSMutableArray<NSString *> *deep = [NSMutableArray array];
     for (NSString *n in names) {
         NSString *low = n.lowercaseString;
+        NSString *full = [dir stringByAppendingPathComponent:n];
+        BOOL isDir = NO;
+        if ([fm fileExistsAtPath:full isDirectory:&isDir] && isDir) {
+            NSArray<NSString *> *inner = [fm contentsOfDirectoryAtPath:full error:NULL] ?: @[];
+            for (NSString *m in [inner sortedArrayUsingSelector:@selector(compare:)]) {
+                NSString *mlow = m.lowercaseString;
+                if ([mlow hasSuffix:@".mov"] || [mlow hasSuffix:@".mp4"] || [mlow hasSuffix:@".m4v"]) {
+                    [deep addObject:[n stringByAppendingPathComponent:m]];
+                }
+            }
+            continue;
+        }
         if ([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"]) {
-            [cands addObject:n];
+            [top addObject:n];
         }
     }
-    if (!cands.count) return nil;
-    [cands sortUsingSelector:@selector(compare:)];
+    if (!top.count && !deep.count) return nil;
+    [top sortUsingSelector:@selector(compare:)];
 
-    // 优先级：main.*（真素材约定名）> 任何非 demo 文件 > 内置 demo.mov
+    // 优先级：顶层 main.* > 任意层 main.* > 顶层非 demo > 分桶（idle 优先，其余按名字）> 顶层其余
     NSString *picked = nil;
-    for (NSString *n in cands) {
+    for (NSString *n in top) {
         if ([n.lowercaseString hasPrefix:@"main."]) { picked = n; break; }
     }
     if (!picked) {
-        for (NSString *n in cands) {
+        for (NSString *n in deep) {
+            if ([n.lowercaseString containsString:@"/main."]) { picked = n; break; }
+        }
+    }
+    if (!picked) {
+        for (NSString *n in top) {
             if (![n.lowercaseString isEqualToString:@"demo.mov"]) { picked = n; break; }
         }
     }
-    if (!picked) picked = cands.firstObject;
+    if (!picked) {
+        NSArray<NSString *> *sorted = [deep sortedArrayUsingSelector:@selector(compare:)];
+        for (NSString *n in sorted) {
+            if ([n.lowercaseString hasPrefix:@"idle/"]) { picked = n; break; }
+        }
+        if (!picked) picked = sorted.firstObject;
+    }
+    if (!picked) picked = top.firstObject;
     return [NSURL fileURLWithPath:[dir stringByAppendingPathComponent:picked]];
 }
 
 - (nullable NSURL *)findFirstMovie {
-    // 运行目录优先（用户可写）；找不到再看随包目录（rootless 下 /var/jb 前缀，postinst 正常会拷过来，
-    // 这里兜底，避免 postinst 失败时整个 S3 只能看到占位方块）
-    NSURL *url = [self pickInDirectory:kPetAssetDir];
-    if (!url) url = [self pickInDirectory:kPetAssetDirFallback];
-    return url;
+    // 逐个候选根目录找：运行目录 → /var/jb/... → /Library/...（roothide 假根）。
+    // 之前在设备上 postinst 拷素材没成，assets 目录是空的，于是只有绿方块；
+    // 现在不再依赖 postinst，谁看见素材就用谁。
+    for (NSString *dir in DSHPetAssetRoots()) {
+        NSURL *u = [self pickInDirectory:dir];
+        if (u) {
+            DSHPetLog(@"player", @"asset-root", @"debug", @{ @"dir": dir, @"file": u.lastPathComponent });
+            return u;
+        }
+    }
+    return nil;
 }
 
 - (BOOL)playClipAtURL:(NSURL *)url {

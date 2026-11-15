@@ -4,7 +4,7 @@ export THEOS_PACKAGE_SCHEME = rootless
 
 # 版本号由 scripts/build-deb.sh 生成 DSHPetVersion.h（VERSION-BUILD），这里不重复定义。
 export TWEAK_NAME = DSHPet
-export DSHPet_FILES = Tweak.xm DSHPetBoot.m DSHPetOverlay.m DSHPetAnimator.m DSHPetPlayer.m
+export DSHPet_FILES = Tweak.xm DSHPetBoot.m DSHPetOverlay.m DSHPetAnimator.m DSHPetPlayer.m DSHPetAssets.m
 export DSHPet_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 export DSHPet_FRAMEWORKS = UIKit QuartzCore AVFoundation
 export DSHPet_LIBRARIES = substrate

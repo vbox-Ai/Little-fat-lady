@@ -1,4 +1,5 @@
 #import "DSHPetAnimator.h"
+#import "DSHPetAssets.h"
 #import "DSHPetPlayer.h"
 #import "DSHPetBoot.h"
 
@@ -53,7 +54,24 @@ static NSString *const kCatOther = @"other";
 - (void)buildIndex {
     [self.groups removeAllObjects];
     NSFileManager *fm = [NSFileManager defaultManager];
-    NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:self.dir error:NULL] ?: @[];
+    NSMutableArray<NSString *> *scanDirs = [NSMutableArray array];
+    if (self.dir.length) [scanDirs addObject:self.dir];
+    for (NSString *r in DSHPetAssetRoots()) {
+        if (![scanDirs containsObject:r]) [scanDirs addObject:r];
+    }
+    for (NSString *scanDir in scanDirs) {
+        [self buildIndexFromDir:scanDir];
+        if (self.groups.count) break;   // 第一个有料的根目录说了算，避免两套素材混着抽
+    }
+
+    NSMutableDictionary *counts = [NSMutableDictionary dictionary];
+    for (NSString *k in self.groups) counts[k] = @(self.groups[k].count);
+    DSHPetLog(@"anim", @"index", @"info", @{ @"dir": self.dir, @"roots": scanDirs, @"groups": counts });
+}
+
+- (void)buildIndexFromDir:(NSString *)scanDir {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:scanDir error:NULL] ?: @[];
 
     // 两种组织方式都吃：
     //  A) 平铺：idle.mov / click-2.mov（按文件名前缀分类）
@@ -69,7 +87,7 @@ static NSString *const kCatOther = @"other";
                 NSString *cat = n.lowercaseString;
                 NSMutableArray<NSString *> *bucket = self.groups[cat];
                 if (!bucket) { bucket = [NSMutableArray array]; self.groups[cat] = bucket; }
-                [bucket addObject:[n stringByAppendingPathComponent:m]];
+                [bucket addObject:[full stringByAppendingPathComponent:m]];
             }
             continue;
         }
@@ -78,7 +96,7 @@ static NSString *const kCatOther = @"other";
         NSString *cat = [self categoryForFile:n];
         NSMutableArray<NSString *> *bucket = self.groups[cat];
         if (!bucket) { bucket = [NSMutableArray array]; self.groups[cat] = bucket; }
-        [bucket addObject:n];
+        [bucket addObject:full];
     }
 
     NSMutableDictionary *counts = [NSMutableDictionary dictionary];
@@ -94,7 +112,9 @@ static NSString *const kCatOther = @"other";
 
 - (BOOL)play:(nullable NSString *)file {
     if (!file.length) return NO;
-    NSURL *url = [NSURL fileURLWithPath:[self.dir stringByAppendingPathComponent:file]];
+    // 索引里存的是绝对路径（素材可能来自 /var/jb 或 /Library 假根），别再拼 self.dir
+    NSString *path = [file isAbsolutePath] ? file : [self.dir stringByAppendingPathComponent:file];
+    NSURL *url = [NSURL fileURLWithPath:path];
     BOOL ok = [[DSHPetPlayer shared] playClipAtURL:url];
     if (ok) {
         self.currentClip = file;
