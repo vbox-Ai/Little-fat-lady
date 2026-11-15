@@ -1,0 +1,7 @@
+#!/bin/sh
+# S1：只建日志目录，把属主交给 mobile（否则 SpringBoard 里的进程写不进去）
+set -e
+mkdir -p /var/mobile/Library/DSHPet/logs
+chown -R mobile:mobile /var/mobile/Library/DSHPet
+chmod 755 /var/mobile/Library/DSHPet /var/mobile/Library/DSHPet/logs
+exit 0

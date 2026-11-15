@@ -1,0 +1,4 @@
+#!/bin/sh
+# S1 测试期：卸载即清干净（只在 S1 这么做；S7 之后改成保留用户配置）
+rm -rf /var/mobile/Library/DSHPet
+exit 0

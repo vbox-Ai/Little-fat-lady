@@ -25,8 +25,49 @@ jobs:
           echo "VERSION=$(cat VERSION)"
           echo "BUILD=$(git rev-list --count HEAD)"
           echo "deb-version=$(cat VERSION)-$(git rev-list --count HEAD)"
-      - name: 文档清单
-        run: ls -l docs docs/journal scripts scripts/probe
 
-  # S1 起在此追加 deb 构建 job（rootless + roothide 双包，需 Theos）。
-  # 现在不写，避免"CI 绿但什么都没编"的假绿。
+  build:
+    name: 构建 deb（rootless · arm64+arm64e）
+    needs: selfcheck
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 装工具链（Theos + ldid + dpkg）
+        run: |
+          brew install ldid dpkg xz >/dev/null 2>&1 || brew install ldid dpkg
+          export THEOS="$RUNNER_TEMP/theos"
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
+          git clone --depth 1 https://github.com/theos/sdks.git "$THEOS/sdks"
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+          echo "theos ok: $(ls "$THEOS" | head -5 | tr '\n' ' ')"
+
+      - name: 编译
+        run: |
+          BUILD=$(git rev-list --count HEAD)
+          sh scripts/build-deb.sh "$BUILD"
+
+      - name: 验收（arm64e 必须在 + 包结构）
+        run: |
+          set -e
+          deb=$(ls packages/ios/*.deb | head -1)
+          echo "deb = $deb"
+          mkdir -p unpack && dpkg-deb -R "$deb" unpack
+          lib=$(find unpack -name 'DSHPet.dylib' | head -1)
+          echo "lib = $lib"
+          lipo -info "$lib" | tee /tmp/lipo.txt
+          grep -q arm64e /tmp/lipo.txt || { echo "::error::缺 arm64e 切片"; exit 1; }
+          echo "--- control ---"
+          dpkg-deb -I "$deb"
+          echo "--- 文件树 ---"
+          find unpack -maxdepth 6 -type f | sort
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dshpet-deb-s1
+          path: packages/ios/*.deb
+          retention-days: 30
+
+  # 下一步（S2 起）：roothide 变体（patcher.sh 打补丁）、IPA 伴生、Release 自动发。
