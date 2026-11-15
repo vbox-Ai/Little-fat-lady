@@ -66,7 +66,6 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (CGRect)sceneBoundsIfValid;
 - (void)relayoutAndSettle:(BOOL)settle;
 - (CGPoint)clampedCenter:(CGPoint)c inSize:(CGSize)b;
-- (void)setLayerVisible:(BOOL)visible;
 - (void)onOrientationChange:(NSNotification *)n;
 @end
 
@@ -76,8 +75,6 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     UIView *_box;
     NSMutableDictionary *_cfg;
     CGPoint _panStartCenter;
-    CGSize _lastSceneSize;     // 上一次真正处理过的场景尺寸，用来过滤"轻微晃动"引起的假旋转
-    NSUInteger _orientToken;   // 旋转连发时只让最后一次收尾动作生效
 }
 
 + (instancetype)shared {
@@ -137,8 +134,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     [root.view addSubview:_box];
     _window.touchTarget = _box;
 
-    CGSize b = scene.coordinateSpace.bounds.size;
-    _lastSceneSize = b;
+    CGSize b = _window.bounds.size;
     _box.center = CGPointMake(b.width * [_cfg[@"centerX"] doubleValue],
                               b.height * [_cfg[@"centerY"] doubleValue]);
 
@@ -231,8 +227,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 }
 
 - (void)clampAndPersist {
+    // 只用窗口 bounds（唯一坐标真相），不要回退到 scene bounds——那个永不随方向变。
     CGSize b = _window.bounds.size;
-    if (b.width <= 0 || b.height <= 0) { b = _scene.coordinateSpace.bounds.size; }
     if (b.width <= 0 || b.height <= 0) return;
 
     CGPoint c = [self clampedCenter:_box.center inSize:b];
@@ -257,24 +253,16 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     if (!_window || !_box) return;
 
     CGRect sb = [self sceneBoundsIfValid];
-    BOOL sceneValid = sb.size.width > 1.0 && sb.size.height > 1.0;
-    BOOL hard = NO;
 
-    // 旋转动画结束后才允许"硬同步"：此时 UIKit 不会再转第二次，设 frame 是安全的。
-    // 关键：**frame 的 origin 必须归零**。
-    // 右横时 scene 坐标空间的 bounds 带非零 origin，直接 frame = sb 会把整个窗口推出屏幕，
-    // 方块就成了"看不见但没死"——这正是右横没有方块的根。
-    if (settle && sceneValid) {
-        CGRect want = CGRectMake(0.0, 0.0, sb.size.width, sb.size.height);
-        BOOL off = !CGRectEqualToRect(_window.frame, want) ||
-                   !CGAffineTransformIsIdentity(_window.transform);
-        if (off) {
-            _window.transform = CGAffineTransformIdentity;
-            _window.frame = want;
-            hard = YES;
-        }
-    }
-
+    // 坐标系只有一套：**就用窗口自己的 bounds**。
+    //
+    // 实测（v0.1.0-26 的 render.jsonl）：scene.coordinateSpace.bounds 在横屏时
+    // 仍然是 393×852（竖屏尺寸，从不随方向换），而窗口 bounds 会正确变成 852×393。
+    // 上一版拿 scene bounds 去硬同步窗口 frame，等于在横屏时把窗口重新塞回竖屏形状——
+    // 方块就永远停在"竖屏那套坐标"的同一物理位置：左横刚好可见、右横落在屏幕外。
+    // 外围那片黑，也是因为窗口只剩竖屏那么宽，屏幕其余部分没有窗口覆盖。
+    //
+    // 所以这里只管布局，一个字节都不碰 frame / transform（那是 UIKit 的活）。
     CGSize b = _window.bounds.size;
     if (b.width <= 1.0 || b.height <= 1.0) return;
 
@@ -285,7 +273,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     _box.center = got;
     _box.hidden = NO;
 
-    // 兜底：夹过了还落在窗口外（窗口自己被系统挪走），拉回默认位置，绝不让它消失。
+    // 兜底：夹过了还落在窗口外，拉回默认位置，绝不让它消失。
     if (!CGRectIntersectsRect(_box.frame, CGRectMake(0.0, 0.0, b.width, b.height))) {
         _box.center = CGPointMake(b.width * 0.80, b.height * 0.22);
         forced = YES;
@@ -297,11 +285,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         @"h": @(b.height),
         @"sceneW": @(sb.size.width),
         @"sceneH": @(sb.size.height),
-        @"sceneX": @(sb.origin.x),
-        @"sceneY": @(sb.origin.y),
         @"frameX": @(_window.frame.origin.x),
         @"frameY": @(_window.frame.origin.y),
-        @"hardSync": @(hard),
         @"settle": @(settle),
         @"tf": [NSString stringWithFormat:@"%.2f/%.2f/%.2f/%.2f",
                 _window.transform.a, _window.transform.b, _window.transform.c, _window.transform.d],
@@ -315,61 +300,21 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (void)onOrientationChange:(NSNotification *)n {
     if (!_window || !_box) return;
 
-    CGRect sb = [self sceneBoundsIfValid];
-    if (sb.size.width < 1.0 || sb.size.height < 1.0) return;
+    // 不再藏窗口、不再改 frame。窗口尺寸由 UIKit 换，layoutSubviews 会自动重排；
+    // 这里只补一次延迟校正，兜住"旋转动画结束、安全区最后才更新"的时序差。
+    CGSize b = _window.bounds.size;
+    DSHPetLog(@"render", @"orient", @"debug", @{
+        @"w": @(b.width),
+        @"h": @(b.height),
+        @"orientation": @([UIDevice currentDevice].orientation),
+        @"name": n.name ?: @"",
+    });
 
-    BOOL sizeSame = CGSizeEqualToSize(sb.size, _lastSceneSize);
-    BOOL winStale = !CGSizeEqualToSize(_window.bounds.size, sb.size);
-
-    // 手机轻微晃动会连发 UIDeviceOrientationDidChange，但场景尺寸没变。
-    // 这种情况绝不能动 alpha（一藏一显就是"闪一下"），只补一次窗口尺寸。
-    if (sizeSame) {
-        if (winStale) [self relayoutAndSettle:YES];
-        DSHPetLog(@"render", @"orient-ignore", @"debug", @{
-            @"w": @(sb.size.width),
-            @"h": @(sb.size.height),
-            @"winStale": @(winStale),
-            @"orientation": @([UIDevice currentDevice].orientation),
-        });
-        return;
-    }
-
-    _lastSceneSize = sb.size;
-    NSUInteger token = ++_orientToken;
-
-    // 只有真的换方向（尺寸变了）才藏整层：SpringBoard 会对窗口做快照再旋转，
-    // 我们这层额外窗口若参与动画，就会留下黑边/阴影残影。
-    [self setLayerVisible:NO];
     __weak DSHPetOverlay *weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.55 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        DSHPetOverlay *s = weakSelf;
-        if (!s || s->_orientToken != token) return;   // 期间又转了，交给最新一次收尾
-        [s relayoutAndSettle:YES];
+        [weakSelf relayoutAndSettle:YES];
     });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.10 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        DSHPetOverlay *s = weakSelf;
-        if (!s || s->_orientToken != token) return;
-        [s relayoutAndSettle:YES];
-        [s setLayerVisible:YES];
-    });
-}
-
-- (void)setLayerVisible:(BOOL)visible {
-    if (!_window) return;
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];   // 不要自带动画，避免又生成一层残影
-    if (visible) {
-        _window.hidden = NO;                 // 先回到窗口层级，再抬 alpha
-        _window.alpha = 1.0;
-    } else {
-        _window.alpha = 0.0;
-        // 只把 alpha 归零，窗口仍参与合成，SpringBoard 的快照里就还留着我们这一层
-        // ——旋转时屏幕上那圈黑边/阴影就是这么来的。彻底 hidden 才会被排除在快照之外。
-        _window.hidden = YES;
-    }
-    [CATransaction commit];
 }
 
 - (void)detach {
