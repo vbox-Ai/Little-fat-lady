@@ -38,6 +38,7 @@
 ## 闸门记录
 
 - S0：自检 PASS → journal 六段齐 → 推送 `45b4956` → 回报已写。**唯一遗留**：手机七条探针 `NOT RUN`（等操作员跑 `scripts/probe/collect-device-env.sh`）。
+- S2 修复：横屏丢方块=relayout 二次设 frame（转两次）；旋转残影=浮层参与 SB 快照 → 旋转期间 alpha=0 + 窗口层彻底透明。修复版 v0.1.0-19（sha256 83e8489d…36eb）。
 - S2：CI run 43690041210 双 job 绿 → deb 16054B（arm64+arm64e）/ sha256 61e1a356...cb3 → Release v0.1.0-15 → journal 六段齐 → 推送 147eb37。**遗留**：五条真机现象 NOT RUN。
 - S1 真机验收通过：rootless 包在 Relaxin 上注入成功（boot + springboard-ready，pid 14789 / iOS 17.0）→ 不需要 roothide 变体。
 - 本机**没有 git**：所有推送走 _push.mjs（GitHub REST），凭据读环境变量 GH_TOKEN，不落盘、不进仓库。
