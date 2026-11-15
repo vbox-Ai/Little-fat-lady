@@ -261,29 +261,46 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     BOOL hard = NO;
 
     // 旋转动画结束后才允许"硬同步"：此时 UIKit 不会再转第二次，设 frame 是安全的。
-    // 额外窗口不会被 UIKit 自动跟着旋转改尺寸（只有主窗口会），
-    // 这就是「只有一个横屏方向看得见方块」的根：那个方向的窗口尺寸没变过来，方块算到了窗口外面。
-    if (settle && sceneValid && !CGSizeEqualToSize(_window.bounds.size, sb.size)) {
-        _window.transform = CGAffineTransformIdentity;
-        _window.frame = sb;
-        hard = YES;
+    // 关键：**frame 的 origin 必须归零**。
+    // 右横时 scene 坐标空间的 bounds 带非零 origin，直接 frame = sb 会把整个窗口推出屏幕，
+    // 方块就成了"看不见但没死"——这正是右横没有方块的根。
+    if (settle && sceneValid) {
+        CGRect want = CGRectMake(0.0, 0.0, sb.size.width, sb.size.height);
+        BOOL off = !CGRectEqualToRect(_window.frame, want) ||
+                   !CGAffineTransformIsIdentity(_window.transform);
+        if (off) {
+            _window.transform = CGAffineTransformIdentity;
+            _window.frame = want;
+            hard = YES;
+        }
     }
 
     CGSize b = _window.bounds.size;
     if (b.width <= 1.0 || b.height <= 1.0) return;
 
-    CGPoint want = CGPointMake(b.width * [_cfg[@"centerX"] doubleValue],
-                               b.height * [_cfg[@"centerY"] doubleValue]);
-    CGPoint got = [self clampedCenter:want inSize:b];
-    BOOL forced = !CGPointEqualToPoint(want, got);
+    CGPoint wantC = CGPointMake(b.width * [_cfg[@"centerX"] doubleValue],
+                                b.height * [_cfg[@"centerY"] doubleValue]);
+    CGPoint got = [self clampedCenter:wantC inSize:b];
+    BOOL forced = !CGPointEqualToPoint(wantC, got);
     _box.center = got;
     _box.hidden = NO;
+
+    // 兜底：夹过了还落在窗口外（窗口自己被系统挪走），拉回默认位置，绝不让它消失。
+    if (!CGRectIntersectsRect(_box.frame, CGRectMake(0.0, 0.0, b.width, b.height))) {
+        _box.center = CGPointMake(b.width * 0.80, b.height * 0.22);
+        forced = YES;
+        DSHPetLog(@"render", @"rescued", @"warn", @{ @"why": @"box-outside-bounds" });
+    }
 
     DSHPetLog(@"render", @"relayout", @"info", @{
         @"w": @(b.width),
         @"h": @(b.height),
         @"sceneW": @(sb.size.width),
         @"sceneH": @(sb.size.height),
+        @"sceneX": @(sb.origin.x),
+        @"sceneY": @(sb.origin.y),
+        @"frameX": @(_window.frame.origin.x),
+        @"frameY": @(_window.frame.origin.y),
         @"hardSync": @(hard),
         @"settle": @(settle),
         @"tf": [NSString stringWithFormat:@"%.2f/%.2f/%.2f/%.2f",
@@ -343,7 +360,15 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     if (!_window) return;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];   // 不要自带动画，避免又生成一层残影
-    _window.alpha = visible ? 1.0 : 0.0;
+    if (visible) {
+        _window.hidden = NO;                 // 先回到窗口层级，再抬 alpha
+        _window.alpha = 1.0;
+    } else {
+        _window.alpha = 0.0;
+        // 只把 alpha 归零，窗口仍参与合成，SpringBoard 的快照里就还留着我们这一层
+        // ——旋转时屏幕上那圈黑边/阴影就是这么来的。彻底 hidden 才会被排除在快照之外。
+        _window.hidden = YES;
+    }
     [CATransaction commit];
 }
 
