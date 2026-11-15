@@ -2,7 +2,7 @@ export TARGET = iphone:clang:latest:17.0
 export ARCHS = arm64 arm64e
 export THEOS_PACKAGE_SCHEME = rootless
 
-# 版本号来自 scripts/build-deb.sh 生成的 DSHPetVersion.h（VERSION-BUILD），这里不重复定义
+# 版本号由 scripts/build-deb.sh 生成 DSHPetVersion.h（VERSION-BUILD），这里不重复定义。
 export TWEAK_NAME = DSHPet
 export DSHPet_FILES = Tweak.xm DSHPetBoot.m DSHPetOverlay.m DSHPetPlayer.m
 export DSHPet_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
@@ -12,5 +12,6 @@ export DSHPet_LIBRARIES = substrate
 include $(THEOS)/makefiles/common.mk
 include $(THEOS_MAKE_PATH)/tweak.mk
 
-after-install::
-	install.exec "sbreload"
+# 注意：这里不要挂 after-install 的 sbreload。
+# 一是不该在打包/安装事务里重启 SpringBoard（会把 Sileo 的 dpkg 事务打断），
+# 二是 deb 安装路径根本不会执行这段（它只服务 make install）。

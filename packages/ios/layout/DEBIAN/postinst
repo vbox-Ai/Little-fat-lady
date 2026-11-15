@@ -1,7 +1,11 @@
 #!/bin/sh
-# DSHPet postinst —— rootless 布局下 /var/jb 由 dpkg 前缀，所以随包素材先落在
-# /var/jb/Library/Application Support/DSHPet/，这里再拷到运行目录 /var/mobile/Library/DSHPet/assets/
-set -e
+# DSHPet postinst
+#
+# 绝对禁止在这里 respring / killall SpringBoard：
+# dpkg 还在 configure 阶段时把 SpringBoard 干掉，Sileo 的安装事务会被打断，
+# 留下 "dpkg 被中断"（half-configured）状态，之后一开 Sileo 就注销。
+# 需要生效时由用户在 Sileo 结束时点"重启 SpringBoard"，或者自己重启桌面。
+set -u
 
 JBROOT=""
 [ -d /var/jb ] && JBROOT="/var/jb"
@@ -10,23 +14,18 @@ PKG_ASSETS="$JBROOT/Library/Application Support/DSHPet"
 RUN_DIR="/var/mobile/Library/DSHPet"
 RUN_ASSETS="$RUN_DIR/assets"
 
-mkdir -p "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs"
+mkdir -p "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs" 2>/dev/null || true
 chown -R mobile:mobile "$RUN_DIR" 2>/dev/null || true
-chmod 755 "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs"
+chmod 755 "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs" 2>/dev/null || true
 
 # 只在用户没有自己的素材时铺演示片，不覆盖 main.mov
 if [ ! -e "$RUN_ASSETS/main.mov" ] && [ ! -e "$RUN_ASSETS/main.mp4" ]; then
   if [ -f "$PKG_ASSETS/demo.mov" ]; then
-    cp -f "$PKG_ASSETS/demo.mov" "$RUN_ASSETS/demo.mov"
+    cp -f "$PKG_ASSETS/demo.mov" "$RUN_ASSETS/demo.mov" 2>/dev/null || true
     chown mobile:mobile "$RUN_ASSETS/demo.mov" 2>/dev/null || true
-    chmod 644 "$RUN_ASSETS/demo.mov"
+    chmod 644 "$RUN_ASSETS/demo.mov" 2>/dev/null || true
   fi
 fi
 
-if command -v sbreload >/dev/null 2>&1; then
-  sbreload >/dev/null 2>&1 || true
-elif command -v killall >/dev/null 2>&1; then
-  killall -9 SpringBoard 2>/dev/null || true
-fi
-
+echo "小肥娘已安装：重启桌面（或点 Sileo 的"重启 SpringBoard"）后生效。"
 exit 0

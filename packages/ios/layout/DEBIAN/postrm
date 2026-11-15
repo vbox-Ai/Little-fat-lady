@@ -1,4 +1,14 @@
 #!/bin/sh
-# S1 测试期：卸载即清干净（只在 S1 这么做；S7 之后改成保留用户配置）
-rm -rf /var/mobile/Library/DSHPet
+# DSHPet postrm
+# 只在真正卸载/清除时删数据；upgrade（升级）时必须保留，否则每次升级都丢日志与素材。
+set -u
+
+case "${1:-}" in
+    remove|purge)
+        rm -rf /var/mobile/Library/DSHPet 2>/dev/null || true
+        ;;
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+esac
+
 exit 0
