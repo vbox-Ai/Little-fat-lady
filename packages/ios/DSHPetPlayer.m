@@ -3,6 +3,7 @@
 #import <AVFoundation/AVFoundation.h>
 
 static NSString *const kPetAssetDir = @"/var/mobile/Library/DSHPet/assets";
+static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Support/DSHPet";
 
 @interface DSHPetPlayer ()
 @property (nonatomic, strong) UIView *host;
