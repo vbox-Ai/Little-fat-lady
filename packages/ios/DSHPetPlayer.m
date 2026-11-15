@@ -1,4 +1,5 @@
 #import "DSHPetPlayer.h"
+#import <AVFoundation/AVAudioSession.h>
 #import "DSHPetBoot.h"
 #import <AVFoundation/AVFoundation.h>
 
@@ -12,6 +13,40 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 @property (nonatomic, strong) NSURL *currentURL;
 @property (nonatomic, assign) CGSize displaySize;
 @property (nonatomic, assign) BOOL observing;
+- (void)onAudioInterruption:(NSNotification *)n {
+    NSNumber *type = n.userInfo[AVAudioSessionInterruptionTypeKey];
+    if (type.unsignedIntegerValue == AVAudioSessionInterruptionTypeEnded) {
+        [self play];
+        DSHPetLog(@"render", @"audio-resume", @"info", @{});
+    }
+}
+
+- (void)onAppActive {
+    if (_player && _player.rate == 0.0 && _currentURL) {
+        [self play];
+        DSHPetLog(@"render", @"resume-on-active", @"info", @{ @"clip": _currentURL.lastPathComponent ?: @"" });
+    }
+}
+
+- (void)startWatchdog {
+    if (_watchdog) return;
+    _watchdog = [NSTimer scheduledTimerWithTimeInterval:3.0
+                                                 target:self
+                                               selector:@selector(onWatchdog:)
+                                               userInfo:nil
+                                                repeats:YES];
+}
+
+- (void)onWatchdog:(NSTimer *)t {
+    // 只在"有素材、App 在前台、却被系统停了"时才拉一把，避免和用户手动暂停打架
+    if (!_player || !_currentURL) return;
+    if ([UIApplication sharedApplication].applicationState != UIApplicationStateActive) return;
+    if (_player.rate == 0.0) {
+        [_player play];
+        DSHPetLog(@"render", @"watchdog-resume", @"debug", @{ @"clip": _currentURL.lastPathComponent ?: @"" });
+    }
+}
+
 @end
 
 @implementation DSHPetPlayer
@@ -176,6 +211,28 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 }
 
 - (void)play {
+    [self startWatchdog];
+    if (_player) {
+        // .ambient + mixWithOthers：跟短剧/音乐共存，不打断别人，也不被别人打断后永久静音
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            AVAudioSession *s = [AVAudioSession sharedInstance];
+            [s setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:NULL];
+            [s setActive:YES error:NULL];
+            [[NSNotificationCenter defaultCenter] addObserver:self
+                                                     selector:@selector(onAudioInterruption:)
+                                                         name:AVAudioSessionInterruptionNotification
+                                                       object:nil];
+            [[NSNotificationCenter defaultCenter] addObserver:self
+                                                     selector:@selector(onAppActive)
+                                                         name:UIApplicationDidBecomeActiveNotification
+                                                       object:nil];
+            [[NSNotificationCenter defaultCenter] addObserver:self
+                                                     selector:@selector(onAppActive)
+                                                         name:UIApplicationWillEnterForegroundNotification
+                                                       object:nil];
+        });
+    }
     if (!_player) return;
     [_player play];
     DSHPetLog(@"render", @"player-play", @"debug", @{ @"rate": @(_player.rate) });

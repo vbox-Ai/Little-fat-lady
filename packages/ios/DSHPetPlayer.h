@@ -4,7 +4,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// 宠物本体播放器：AVPlayerLayer + 透明视频（HEVC-alpha / ProRes-4444-alpha），循环播放。
 /// S3 只负责"能放、能循环、消失时停"，动画状态机在 S4。
-@interface DSHPetPlayer : NSObject
+@interface DSHPetPlayer : NSObject {
+    NSTimer *_watchdog;
+}
 
 /// S4：切到指定片段（状态机用）。不会重建 layer，只换 AVPlayerItem。
 - (BOOL)playClipAtURL:(NSURL *)url;
@@ -27,6 +29,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// 当前素材的原始像素尺寸（无素材时返回 CGSizeZero）。
 /// 宿主尺寸要按这个比例算，写死 2160x1215 会让不同素材出现大片透明边。
 @property (nonatomic, readonly) CGSize naturalSize;
+
+/// S4：3s 看门狗，第三方播放器/来电把 AVPlayer 停了之后自动恢复。
+- (void)startWatchdog;
 
 @end
 

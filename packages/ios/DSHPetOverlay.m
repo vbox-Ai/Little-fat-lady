@@ -24,7 +24,12 @@ static NSMutableDictionary *DSHPetLoadUIConfig(void) {
     if (!cfg[@"centerX"]) cfg[@"centerX"] = @(0.80);
     if (!cfg[@"centerY"]) cfg[@"centerY"] = @(0.22);
     if (!cfg[@"taps"]) cfg[@"taps"] = @(0);
-    if (!cfg[@"windowLevel"]) cfg[@"windowLevel"] = @(UIWindowLevelStatusBar + 100.0);
+    // 1500 = 状态栏(1000)之上、系统弹窗(2000)之下：
+    // 短剧/视频类 App 会把自己的全屏窗口抬到 1000 以上，1100 会被压在下面（宠物"消失"）。
+    // 老配置里存着 1100 的一律迁移上来，否则改默认值也救不了已装用户。
+    if (!cfg[@"windowLevel"] || [cfg[@"windowLevel"] doubleValue] <= UIWindowLevelStatusBar + 100.5) {
+        cfg[@"windowLevel"] = @(1500.0);
+    }
     return cfg;
 }
 
@@ -130,12 +135,21 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     _window.rootViewController = root;
 
     // 宠物宿主：宽 = size，高按 2160x1215 素材比例（1.778）算。
-    CGFloat size = [_cfg[@"size"] doubleValue];
-    if (size < 120) size = 300;
-    // 手机上 462 会顶满整屏，先按屏宽的 55% 收一档；用户想更大由滑块（S7）放开。
     CGFloat scrW = CGRectGetWidth([UIScreen mainScreen].bounds);
     CGFloat maxW = scrW * 0.62;   // 上限：再大就盖住图标文字了
     CGFloat minW = scrW * 0.16;   // 下限：太小看不清表情
+
+    // 宽度来源按优先级：sizeRatio（跨机型可移植）> size（旧配置/像素）> 默认 30% 屏宽。
+    // 注意：这里不能拿"小于某个绝对值"当"没配过"的判据——用户捏到 118pt 是合法值，
+    // 之前写 `size < 120 → 300` 正是"缩小后注销又变大"的根因。
+    CGFloat size = 0;
+    if (_cfg[@"sizeRatio"]) {
+        size = scrW * [_cfg[@"sizeRatio"] doubleValue];
+    } else if ([_cfg[@"size"] doubleValue] > 0) {
+        size = [_cfg[@"size"] doubleValue];
+    } else {
+        size = scrW * 0.30;
+    }
     if (size > maxW) size = maxW;
     if (size < minW) size = minW;
     CGFloat petW = size;
