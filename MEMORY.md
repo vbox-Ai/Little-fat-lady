@@ -54,3 +54,7 @@
 - 旋转时会黑边：SpringBoard 旋转快照会连高 `windowLevel` 的窗口一起拍，缓冲按旧尺寸分配 → 必须在**真旋转**发生前用 `hidden` 撤层，0.45/0.80s 后重排复显；判断用 `UIDevice.orientation` 的方向类别（比 `scene.interfaceOrientation` 早），轻微晃动不触发。
 - 透明视频素材：HEVC-alpha 只能在 macOS 编码；本机用 `ffmpeg -c:v prores_ks -profile:v 4444 -pix_fmt yuva444p10le` 出 ProRes 4444 with alpha 做验证，A16 能硬解。
 - 素材查找优先级固定为 `main.*` > 非 demo > `demo.mov`，免得演示素材盖住真素材。
+
+- rootless 包会把 `layout/` 下所有路径加 `/var/jb` 前缀：静态素材不要放 `layout/var/mobile/...`（会变成 `/var/jb/var/mobile/...`），要么放 `/var/jb/Library/...` 再让 postinst 拷到 `/var/mobile`，要么全部运行时生成。
+- CI 禁止"编译失败也打包"的兜底：会让真机现象变成"改了没生效"，比直接红更浪费；`scripts/build-deb.sh` 已删该分支。
+- 用 GitHub `base_tree` 推送不会删除本地已删的文件，必须显式给 `sha: null` 条目；否则废弃路径会一直被打进 deb。
