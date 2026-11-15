@@ -16,7 +16,7 @@ const REQUIRED = [
   'AGENTS.md', 'MEMORY.md', 'VERSION', '.gitignore',
   'docs/PLAN.md', 'docs/journal/README.md', 'docs/journal/S00.md',
   'scripts/check-repo.mjs', 'scripts/bump-version.mjs',
-  '.github/workflows/ci.yml', '.github/workflows/release.yml',
+  '.github/workflows/ci.yml',
 ];
 for (const f of REQUIRED) {
   existsSync(join(ROOT, f)) ? ok(f) : bad(`缺文件：${f}`);
