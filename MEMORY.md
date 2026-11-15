@@ -62,3 +62,7 @@
 - 装包脚本（postinst/postrm）里绝对禁止 `sbreload`/`killall SpringBoard`：dpkg 事务会被打断，用户会卡在 `half-configured`、一开 Sileo 就注销。生效由用户点 Sileo 的"重启 SpringBoard"。
 - `postrm` 必须按 `$1` 分支：`remove|purge` 才删数据，`upgrade` 保留，否则每次升级都清空日志与素材。
 - 用户卡在 dpkg interrupted 时，图形化自救见仓库 `docs/RECOVERY.md`（Sileo 修复 → 卸载重装 → Filza 删 lock/updates）。
+
+- 0.1.0-40 那次"dpkg 被中断 / 一开 Sileo 就注销桌面"是 `postinst` 里杀 SpringBoard 造成的：dpkg 事务没结束就丢桌面 → 包停在 half-configured，之后每次收尾都重跑 dpkg 保存的**旧 postinst 副本**，形成死循环。规矩：维护脚本里绝不重启桌面，卸载/升级逻辑放 `postrm` 按 `$1` 分支。
+- rootless 包给 `layout/` 下所有路径加 `/var/jb` 前缀，所以数据文件不要放 `layout/var/mobile/...`；放 `layout/Library/Application Support/<Name>/`，由 `postinst` 拷到运行目录。
+- 发布脚本别在 PowerShell here-string 里放中文：会被控制台编码打坏；正确做法是 python 写 UTF-8 JSON 文件，node 读文件发请求，二进制再用 `Invoke-RestMethod -InFile` 上传。
