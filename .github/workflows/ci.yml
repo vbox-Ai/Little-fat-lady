@@ -59,6 +59,9 @@ jobs:
           DEST="packages/ios/layout/Library/Application Support/DSHPet"
           mkdir -p "$DEST"
           cp -R "$RUNNER_TEMP/pack/." "$DEST/"
+          # 只留分桶素材：平铺的演示片（idle.mov 等）会跟真素材抢同一类别，
+          # 抽签时一半概率抽到占位蓝水母——这是 0.1.0-52 的真机现象。
+          rm -f "$DEST"/*.mov
           echo "素材桶："; ls "$DEST"
           echo "总大小：$(du -sh "$DEST" | cut -f1)"
 
