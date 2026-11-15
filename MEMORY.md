@@ -32,10 +32,13 @@
 | --- | --- | --- |
 | S0 环境基线 | **已关闭**（`45b4956`） | [docs/journal/S00.md](docs/journal/S00.md) |
 | S1 空壳注入 | **已关闭** | [docs/journal/S01.md](docs/journal/S01.md) |
-| S2 透明窗口 | 未开始（下一步） | — |
+| S2 透明浮层 | **代码侧关闭**（真机待验） | [docs/journal/S02.md](docs/journal/S02.md) |
+| S3 单宠物渲染 | 未开始（等 S2 真机第 1/2 条） | — |
 
 ## 闸门记录
 
 - S0：自检 PASS → journal 六段齐 → 推送 `45b4956` → 回报已写。**唯一遗留**：手机七条探针 `NOT RUN`（等操作员跑 `scripts/probe/collect-device-env.sh`）。
+- S2：CI run 43690041210 双 job 绿 → deb 16054B（arm64+arm64e）/ sha256 61e1a356...cb3 → Release v0.1.0-15 → journal 六段齐 → 推送 147eb37。**遗留**：五条真机现象 NOT RUN。
+- S1 真机验收通过：rootless 包在 Relaxin 上注入成功（boot + springboard-ready，pid 14789 / iOS 17.0）→ 不需要 roothide 变体。
 - 本机**没有 git**：所有推送走 _push.mjs（GitHub REST），凭据读环境变量 GH_TOKEN，不落盘、不进仓库。
 - 空仓库首次推送必须先用 Contents API 落一个文件（否则 git-data 接口全 409 Git Repository is empty）。

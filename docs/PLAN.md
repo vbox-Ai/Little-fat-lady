@@ -1631,3 +1631,28 @@ const BUILTIN_PROVIDERS = [opencodeGo, commandCode, deepseekOfficial, deepseekAc
 ``
 
 > 本条新增的硬规则：**S1 之后每个阶段的关闭记录都必须有 CI run id 与产物 sha256**，不许只写"已跑通"。
+
+### 20.7 S2 关闭记录（代码侧 CLOSED，真机待验）
+
+```text
+阶段：S2 透明浮层（SpringBoard 独立 UIWindow + 可拖动方块）
+① 自检  ：node scripts/check-repo.mjs -> PASS（journal S00/S01/S02 六段齐）；
+          两坑修毕：nullability-completeness（CI 为 error）、16.5 SDK 无
+          UIWindowSceneDidUpdateCoordinateSpaceNotification（改 layoutSubviews）
+② 记忆  ：docs/journal/S02.md 六段齐 + S01 §2.0 回填真机验收 + MEMORY.md 索引/闸门已更新
+③ 推送  ：commit 147eb37（REST 推送，远端 main == 本地快照）
+④ 回报  ：CI run 43690041210 双 job 绿；deb 16054B / sha256 61e1a356...cb3；
+          lipo = arm64 arm64e；Release v0.1.0-15 已挂 deb + SHA256SUMS
+结论：CLOSED（代码与产物已闭环）。真机五条现象为 S2 的验收残留，操作员确认后回填；
+      其中「浮在桌面/App 之上」与「空白处点击穿透」两条为开 S3 的硬前提。
+```
+
+#### 20.7.1 S1 真机验收（补记，已闭环）
+
+```text
+证据：/var/mobile/Library/DSHPet/logs/runtime.jsonl 两行
+      {"pid":14789,"os":"17.0","evt":"boot","exe":"com.apple.springboard",...}
+      {"evt":"springboard-ready","stage":"s1","pid":14789}
+判定：注入 SpringBoard 成功 + hook 生效 + 可写数据目录。
+      由此关闭「是否需要 roothide 变体」的未决项——rootless 包在 Relaxin 上可直接用。
+```
