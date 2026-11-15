@@ -47,6 +47,21 @@ jobs:
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
           echo "sdks: $(ls "$THEOS/sdks" | head -5 | tr '\n' ' ')"
 
+      - name: 拉素材包（上游 0.4.9 · 114 段转码版）
+        env:
+          PACK_URL: https://github.com/vbox-Ai/Little-fat-lady/releases/download/pack-upstream-0.4.9/assets-pack-upstream-0.4.9.zip
+        run: |
+          set -e
+          curl -fL --retry 4 --retry-delay 3 -o "$RUNNER_TEMP/pack.zip" "$PACK_URL"
+          ls -lh "$RUNNER_TEMP/pack.zip"
+          mkdir -p "$RUNNER_TEMP/pack"
+          unzip -q "$RUNNER_TEMP/pack.zip" -d "$RUNNER_TEMP/pack"
+          DEST="packages/ios/layout/Library/Application Support/DSHPet"
+          mkdir -p "$DEST"
+          cp -R "$RUNNER_TEMP/pack/." "$DEST/"
+          echo "素材桶："; ls "$DEST"
+          echo "总大小：$(du -sh "$DEST" | cut -f1)"
+
       - name: 编译
         run: |
           BUILD=$(git rev-list --count HEAD)

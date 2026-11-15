@@ -41,3 +41,6 @@ dsh-pet-config-live.json
 dsh-pet-config-pretty.json
 dsh-pet-config-summary.txt
 packages/ios/DSHPetVersion.h
+
+# 素材包不进仓库（由 CI 从 Release 资产拉取）
+packages/ios/layout/Library/Application Support/DSHPet/

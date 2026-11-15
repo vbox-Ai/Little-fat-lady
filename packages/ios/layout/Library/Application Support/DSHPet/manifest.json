@@ -1,0 +1,689 @@
+{
+ "version": "upstream-0.4.9",
+ "clips": [
+  {
+   "name": "三球抛接",
+   "bucket": "play",
+   "file": "play/001-play.mov",
+   "bytes": 838940
+  },
+  {
+   "name": "下五子棋",
+   "bucket": "play",
+   "file": "play/002-play.mov",
+   "bytes": 839278
+  },
+  {
+   "name": "东张西望",
+   "bucket": "turn",
+   "file": "turn/003-turn.mov",
+   "bytes": 831623
+  },
+  {
+   "name": "中秋赏月吃月饼",
+   "bucket": "play",
+   "file": "play/004-play.mov",
+   "bytes": 886777
+  },
+  {
+   "name": "优雅女仆舞",
+   "bucket": "play",
+   "file": "play/005-play.mov",
+   "bytes": 794925
+  },
+  {
+   "name": "余额-分文不剩",
+   "bucket": "balance",
+   "file": "balance/006-balance.mov",
+   "bytes": 851899
+  },
+  {
+   "name": "余额-数金皱眉",
+   "bucket": "balance",
+   "file": "balance/007-balance.mov",
+   "bytes": 814996
+  },
+  {
+   "name": "余额-袋空如洗",
+   "bucket": "balance",
+   "file": "balance/008-balance.mov",
+   "bytes": 848070
+  },
+  {
+   "name": "余额-金袋叮当",
+   "bucket": "balance",
+   "file": "balance/009-balance.mov",
+   "bytes": 839787
+  },
+  {
+   "name": "余额-钱袋如常",
+   "bucket": "balance",
+   "file": "balance/010-balance.mov",
+   "bytes": 855401
+  },
+  {
+   "name": "余额-钱袋满溢",
+   "bucket": "balance",
+   "file": "balance/011-balance.mov",
+   "bytes": 848403
+  },
+  {
+   "name": "侧身急躁跑",
+   "bucket": "play",
+   "file": "play/012-play.mov",
+   "bytes": 944710
+  },
+  {
+   "name": "偷吃零食被抓住",
+   "bucket": "play",
+   "file": "play/013-play.mov",
+   "bytes": 853199
+  },
+  {
+   "name": "写代码",
+   "bucket": "play",
+   "file": "play/014-play.mov",
+   "bytes": 771094
+  },
+  {
+   "name": "写福字",
+   "bucket": "play",
+   "file": "play/015-play.mov",
+   "bytes": 813196
+  },
+  {
+   "name": "凭空生花",
+   "bucket": "play",
+   "file": "play/016-play.mov",
+   "bytes": 843522
+  },
+  {
+   "name": "动物环绕",
+   "bucket": "play",
+   "file": "play/017-play.mov",
+   "bytes": 1086022
+  },
+  {
+   "name": "原地专心玩魔方",
+   "bucket": "play",
+   "file": "play/018-play.mov",
+   "bytes": 818789
+  },
+  {
+   "name": "原地小憩沉眠",
+   "bucket": "play",
+   "file": "play/019-play.mov",
+   "bytes": 838114
+  },
+  {
+   "name": "原地左转奔跑",
+   "bucket": "play",
+   "file": "play/020-play.mov",
+   "bytes": 782835
+  },
+  {
+   "name": "原地敲击桌面互动",
+   "bucket": "play",
+   "file": "play/021-play.mov",
+   "bytes": 809657
+  },
+  {
+   "name": "原地漂浮踏步",
+   "bucket": "play",
+   "file": "play/022-play.mov",
+   "bytes": 807722
+  },
+  {
+   "name": "原地跳跃抓碎头顶物品",
+   "bucket": "play",
+   "file": "play/023-play.mov",
+   "bytes": 858862
+  },
+  {
+   "name": "原地蹲下玩玩具汽车",
+   "bucket": "play",
+   "file": "play/024-play.mov",
+   "bytes": 783475
+  },
+  {
+   "name": "原地重力下蹲压缩",
+   "bucket": "play",
+   "file": "play/025-play.mov",
+   "bytes": 708481
+  },
+  {
+   "name": "变鸽子",
+   "bucket": "play",
+   "file": "play/026-play.mov",
+   "bytes": 795424
+  },
+  {
+   "name": "可爱宅舞",
+   "bucket": "play",
+   "file": "play/027-play.mov",
+   "bytes": 825003
+  },
+  {
+   "name": "吃Token",
+   "bucket": "eat",
+   "file": "eat/028-eat.mov",
+   "bytes": 907603
+  },
+  {
+   "name": "吃冰淇淋融化",
+   "bucket": "eat",
+   "file": "eat/029-eat.mov",
+   "bytes": 844614
+  },
+  {
+   "name": "吃午餐",
+   "bucket": "eat",
+   "file": "eat/030-eat.mov",
+   "bytes": 835046
+  },
+  {
+   "name": "吃大闸蟹",
+   "bucket": "eat",
+   "file": "eat/031-eat.mov",
+   "bytes": 824679
+  },
+  {
+   "name": "吃年糕",
+   "bucket": "eat",
+   "file": "eat/032-eat.mov",
+   "bytes": 790733
+  },
+  {
+   "name": "吃早餐",
+   "bucket": "eat",
+   "file": "eat/033-eat.mov",
+   "bytes": 796593
+  },
+  {
+   "name": "吃晚餐",
+   "bucket": "eat",
+   "file": "eat/034-eat.mov",
+   "bytes": 1056977
+  },
+  {
+   "name": "吃汤圆",
+   "bucket": "eat",
+   "file": "eat/035-eat.mov",
+   "bytes": 784638
+  },
+  {
+   "name": "吃白饭",
+   "bucket": "eat",
+   "file": "eat/036-eat.mov",
+   "bytes": 826456
+  },
+  {
+   "name": "吃粽子",
+   "bucket": "eat",
+   "file": "eat/037-eat.mov",
+   "bytes": 798865
+  },
+  {
+   "name": "吃糖葫芦",
+   "bucket": "eat",
+   "file": "eat/038-eat.mov",
+   "bytes": 836554
+  },
+  {
+   "name": "吃腊八粥",
+   "bucket": "eat",
+   "file": "eat/039-eat.mov",
+   "bytes": 818003
+  },
+  {
+   "name": "吃西瓜",
+   "bucket": "eat",
+   "file": "eat/040-eat.mov",
+   "bytes": 851287
+  },
+  {
+   "name": "吃重阳糕",
+   "bucket": "eat",
+   "file": "eat/041-eat.mov",
+   "bytes": 816852
+  },
+  {
+   "name": "吃长寿面",
+   "bucket": "eat",
+   "file": "eat/042-eat.mov",
+   "bytes": 838312
+  },
+  {
+   "name": "吃青团",
+   "bucket": "eat",
+   "file": "eat/043-eat.mov",
+   "bytes": 796220
+  },
+  {
+   "name": "吃饭·碗饭",
+   "bucket": "eat",
+   "file": "eat/044-eat.mov",
+   "bytes": 402458
+  },
+  {
+   "name": "吃饭团",
+   "bucket": "eat",
+   "file": "eat/045-eat.mov",
+   "bytes": 398869
+  },
+  {
+   "name": "吃饺子",
+   "bucket": "eat",
+   "file": "eat/046-eat.mov",
+   "bytes": 855664
+  },
+  {
+   "name": "吹气球",
+   "bucket": "play",
+   "file": "play/047-play.mov",
+   "bytes": 936047
+  },
+  {
+   "name": "吹笛子",
+   "bucket": "play",
+   "file": "play/048-play.mov",
+   "bytes": 938359
+  },
+  {
+   "name": "哈欠连天",
+   "bucket": "play",
+   "file": "play/049-play.mov",
+   "bytes": 845911
+  },
+  {
+   "name": "堆雪人",
+   "bucket": "play",
+   "file": "play/050-play.mov",
+   "bytes": 785321
+  },
+  {
+   "name": "大口吃零食",
+   "bucket": "play",
+   "file": "play/051-play.mov",
+   "bytes": 1025010
+  },
+  {
+   "name": "女仆屈膝礼仪",
+   "bucket": "play",
+   "file": "play/052-play.mov",
+   "bytes": 808888
+  },
+  {
+   "name": "小幅度原地360度旋转展示",
+   "bucket": "play",
+   "file": "play/053-play.mov",
+   "bytes": 776372
+  },
+  {
+   "name": "小提琴演奏",
+   "bucket": "play",
+   "file": "play/054-play.mov",
+   "bytes": 848335
+  },
+  {
+   "name": "工作状态-原地踱步张望",
+   "bucket": "workstatus",
+   "file": "workstatus/055-workstatus.mov",
+   "bytes": 835875
+  },
+  {
+   "name": "工作状态-垂头叹气冒汗",
+   "bucket": "workstatus",
+   "file": "workstatus/056-workstatus.mov",
+   "bytes": 426285
+  },
+  {
+   "name": "工作状态-忙碌点按",
+   "bucket": "workstatus",
+   "file": "workstatus/057-workstatus.mov",
+   "bytes": 891839
+  },
+  {
+   "name": "工作状态-思考冒泡",
+   "bucket": "workstatus",
+   "file": "workstatus/058-workstatus.mov",
+   "bytes": 885355
+  },
+  {
+   "name": "工作状态-清点归档",
+   "bucket": "workstatus",
+   "file": "workstatus/059-workstatus.mov",
+   "bytes": 806704
+  },
+  {
+   "name": "工作状态-雀跃庆祝",
+   "bucket": "workstatus",
+   "file": "workstatus/060-workstatus.mov",
+   "bytes": 879818
+  },
+  {
+   "name": "开心小跑",
+   "bucket": "play",
+   "file": "play/061-play.mov",
+   "bytes": 823526
+  },
+  {
+   "name": "待机呼吸休闲",
+   "bucket": "idle",
+   "file": "idle/062-idle.mov",
+   "bytes": 818994
+  },
+  {
+   "name": "悠闲哼歌",
+   "bucket": "play",
+   "file": "play/063-play.mov",
+   "bytes": 873706
+  },
+  {
+   "name": "扑克魔术",
+   "bucket": "play",
+   "file": "play/064-play.mov",
+   "bytes": 840948
+  },
+  {
+   "name": "打瞌睡被惊醒",
+   "bucket": "play",
+   "file": "play/065-play.mov",
+   "bytes": 818020
+  },
+  {
+   "name": "抽陀螺",
+   "bucket": "play",
+   "file": "play/066-play.mov",
+   "bytes": 828484
+  },
+  {
+   "name": "拆礼物",
+   "bucket": "play",
+   "file": "play/067-play.mov",
+   "bytes": 810930
+  },
+  {
+   "name": "插茱萸赏菊",
+   "bucket": "play",
+   "file": "play/068-play.mov",
+   "bytes": 799122
+  },
+  {
+   "name": "摇扇纳凉",
+   "bucket": "play",
+   "file": "play/069-play.mov",
+   "bytes": 828815
+  },
+  {
+   "name": "撸猫",
+   "bucket": "play",
+   "file": "play/070-play.mov",
+   "bytes": 854377
+  },
+  {
+   "name": "收红包",
+   "bucket": "play",
+   "file": "play/071-play.mov",
+   "bytes": 783443
+  },
+  {
+   "name": "放孔明灯",
+   "bucket": "play",
+   "file": "play/072-play.mov",
+   "bytes": 885061
+  },
+  {
+   "name": "放河灯",
+   "bucket": "play",
+   "file": "play/073-play.mov",
+   "bytes": 767179
+  },
+  {
+   "name": "放烟花",
+   "bucket": "play",
+   "file": "play/074-play.mov",
+   "bytes": 1224154
+  },
+  {
+   "name": "放风筝",
+   "bucket": "play",
+   "file": "play/075-play.mov",
+   "bytes": 967009
+  },
+  {
+   "name": "整体换装试色",
+   "bucket": "play",
+   "file": "play/076-play.mov",
+   "bytes": 704378
+  },
+  {
+   "name": "是啊，吃什么",
+   "bucket": "play",
+   "file": "play/077-play.mov",
+   "bytes": 1028548
+  },
+  {
+   "name": "晨间刷牙",
+   "bucket": "play",
+   "file": "play/078-play.mov",
+   "bytes": 827645
+  },
+  {
+   "name": "期待开饭",
+   "bucket": "eat",
+   "file": "eat/079-eat.mov",
+   "bytes": 424488
+  },
+  {
+   "name": "涮火锅",
+   "bucket": "eat",
+   "file": "eat/080-eat.mov",
+   "bytes": 845197
+  },
+  {
+   "name": "深度思考碎碎念",
+   "bucket": "play",
+   "file": "play/081-play.mov",
+   "bytes": 950213
+  },
+  {
+   "name": "点击回应-傲娇生气",
+   "bucket": "click",
+   "file": "click/082-click.mov",
+   "bytes": 744794
+  },
+  {
+   "name": "点击回应-元气挥手",
+   "bucket": "click",
+   "file": "click/083-click.mov",
+   "bytes": 842020
+  },
+  {
+   "name": "点击回应-害羞惊讶",
+   "bucket": "click",
+   "file": "click/084-click.mov",
+   "bytes": 832963
+  },
+  {
+   "name": "点击回应-开心跃动",
+   "bucket": "click",
+   "file": "click/085-click.mov",
+   "bytes": 861017
+  },
+  {
+   "name": "点击回应-挠痒咯咯笑",
+   "bucket": "click",
+   "file": "click/086-click.mov",
+   "bytes": 781757
+  },
+  {
+   "name": "照镜子",
+   "bucket": "play",
+   "file": "play/087-play.mov",
+   "bytes": 837546
+  },
+  {
+   "name": "玩水枪",
+   "bucket": "play",
+   "file": "play/088-play.mov",
+   "bytes": 888562
+  },
+  {
+   "name": "玩游戏气急败坏",
+   "bucket": "play",
+   "file": "play/089-play.mov",
+   "bytes": 904635
+  },
+  {
+   "name": "用鲸鱼尾巴拍打地面",
+   "bucket": "play",
+   "file": "play/090-play.mov",
+   "bytes": 851573
+  },
+  {
+   "name": "睡觉-开始",
+   "bucket": "sleep",
+   "file": "sleep/091-sleep.mov",
+   "bytes": 784206
+  },
+  {
+   "name": "睡觉-循环",
+   "bucket": "sleep",
+   "file": "sleep/092-sleep.mov",
+   "bytes": 779019
+  },
+  {
+   "name": "睡觉-起来",
+   "bucket": "sleep",
+   "file": "sleep/093-sleep.mov",
+   "bytes": 800084
+  },
+  {
+   "name": "碎碎念-发呆碎碎念",
+   "bucket": "whisper",
+   "file": "whisper/094-whisper.mov",
+   "bytes": 825812
+  },
+  {
+   "name": "碎碎念-对屏碎碎念",
+   "bucket": "whisper",
+   "file": "whisper/095-whisper.mov",
+   "bytes": 825561
+  },
+  {
+   "name": "碎碎念-擦桌碎碎念",
+   "bucket": "whisper",
+   "file": "whisper/096-whisper.mov",
+   "bytes": 827668
+  },
+  {
+   "name": "穿针乞巧",
+   "bucket": "play",
+   "file": "play/097-play.mov",
+   "bytes": 895957
+  },
+  {
+   "name": "舞狮头",
+   "bucket": "play",
+   "file": "play/098-play.mov",
+   "bytes": 883620
+  },
+  {
+   "name": "荡秋千",
+   "bucket": "play",
+   "file": "play/099-play.mov",
+   "bytes": 856787
+  },
+  {
+   "name": "萌化小幽灵",
+   "bucket": "play",
+   "file": "play/100-play.mov",
+   "bytes": 786900
+  },
+  {
+   "name": "蓝鲸现世",
+   "bucket": "play",
+   "file": "play/101-play.mov",
+   "bytes": 828163
+  },
+  {
+   "name": "蝴蝶蜜蜂环绕头顶开花",
+   "bucket": "play",
+   "file": "play/102-play.mov",
+   "bytes": 1002319
+  },
+  {
+   "name": "螃蟹走路",
+   "bucket": "play",
+   "file": "play/103-play.mov",
+   "bytes": 824829
+  },
+  {
+   "name": "被吓一跳",
+   "bucket": "play",
+   "file": "play/104-play.mov",
+   "bytes": 842017
+  },
+  {
+   "name": "被落叶淹没",
+   "bucket": "play",
+   "file": "play/105-play.mov",
+   "bytes": 946755
+  },
+  {
+   "name": "被鼠标拖拽悬空反馈",
+   "bucket": "drag",
+   "file": "drag/106-drag.mov",
+   "bytes": 864912
+  },
+  {
+   "name": "装点圣诞树",
+   "bucket": "play",
+   "file": "play/107-play.mov",
+   "bytes": 1074587
+  },
+  {
+   "name": "讨糖南瓜灯",
+   "bucket": "play",
+   "file": "play/108-play.mov",
+   "bytes": 797048
+  },
+  {
+   "name": "超大伸懒腰",
+   "bucket": "play",
+   "file": "play/109-play.mov",
+   "bytes": 832960
+  },
+  {
+   "name": "踢毽子",
+   "bucket": "play",
+   "file": "play/110-play.mov",
+   "bytes": 815037
+  },
+  {
+   "name": "轻快摇摆舞",
+   "bucket": "play",
+   "file": "play/111-play.mov",
+   "bytes": 792302
+  },
+  {
+   "name": "轻快记录",
+   "bucket": "play",
+   "file": "play/112-play.mov",
+   "bytes": 796905
+  },
+  {
+   "name": "骑木马",
+   "bucket": "play",
+   "file": "play/113-play.mov",
+   "bytes": 984218
+  },
+  {
+   "name": "鲸鱼吐泡泡特效",
+   "bucket": "play",
+   "file": "play/114-play.mov",
+   "bytes": 880246
+  }
+ ]
+}

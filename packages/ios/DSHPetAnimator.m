@@ -54,17 +54,30 @@ static NSString *const kCatOther = @"other";
     [self.groups removeAllObjects];
     NSFileManager *fm = [NSFileManager defaultManager];
     NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:self.dir error:NULL] ?: @[];
-    NSMutableArray<NSString *> *sorted = [[names sortedArrayUsingSelector:@selector(compare:)] mutableCopy];
 
-    for (NSString *n in sorted) {
+    // 两种组织方式都吃：
+    //  A) 平铺：idle.mov / click-2.mov（按文件名前缀分类）
+    //  B) 分桶：idle/001-idle.mov、workstatus/007-workstatus.mov（按目录名分类，上游素材包就是这种）
+    for (NSString *n in [names sortedArrayUsingSelector:@selector(compare:)]) {
+        NSString *full = [self.dir stringByAppendingPathComponent:n];
+        BOOL isDir = NO;
+        if ([fm fileExistsAtPath:full isDirectory:&isDir] && isDir) {
+            NSArray<NSString *> *inner = [fm contentsOfDirectoryAtPath:full error:NULL] ?: @[];
+            for (NSString *m in [inner sortedArrayUsingSelector:@selector(compare:)]) {
+                NSString *low = m.lowercaseString;
+                if (!([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"])) continue;
+                NSString *cat = n.lowercaseString;
+                NSMutableArray<NSString *> *bucket = self.groups[cat];
+                if (!bucket) { bucket = [NSMutableArray array]; self.groups[cat] = bucket; }
+                [bucket addObject:[n stringByAppendingPathComponent:m]];
+            }
+            continue;
+        }
         NSString *low = n.lowercaseString;
         if (!([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"])) continue;
         NSString *cat = [self categoryForFile:n];
         NSMutableArray<NSString *> *bucket = self.groups[cat];
-        if (!bucket) {
-            bucket = [NSMutableArray array];
-            self.groups[cat] = bucket;
-        }
+        if (!bucket) { bucket = [NSMutableArray array]; self.groups[cat] = bucket; }
         [bucket addObject:n];
     }
 
@@ -129,10 +142,14 @@ static NSString *const kCatOther = @"other";
         NSString *s = [self pickFrom:kCatSleep];
         if ([self play:s]) { [self scheduleIdle]; return; }
     }
-    // 待机时：70% 继续 idle，30% 东张西望
-    BOOL look = (arc4random_uniform(100) < 30);
-    NSString *file = look ? [self pickFrom:kCatTurn] : nil;
-    if (!file) file = [self pickFrom:kCatIdle];
+    // 待机抽签：55% idle、20% 东张西望、15% 玩耍、10% 吃
+    uint32_t r = arc4random_uniform(100);
+    NSString *file = nil;
+    if (r < 55)      file = [self pickFrom:kCatIdle];
+    else if (r < 75) file = [self pickFrom:kCatTurn];
+    else if (r < 90) file = [self pickFrom:@"play"];
+    else             file = [self pickFrom:@"eat"];
+    if (!file) file = [self pickFrom:kCatTurn] ?: [self pickFrom:kCatIdle];
     [self play:file];
     [self scheduleIdle];
 }

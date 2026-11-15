@@ -18,18 +18,33 @@ mkdir -p "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs" 2>/dev/null 
 chown -R mobile:mobile "$RUN_DIR" 2>/dev/null || true
 chmod 755 "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs" 2>/dev/null || true
 
-# 只在用户没有真素材（main.mov / main.mp4）时铺演示片，绝不覆盖用户自己的文件。
-if [ ! -e "$RUN_ASSETS/main.mov" ] && [ ! -e "$RUN_ASSETS/main.mp4" ]; then
+# 素材铺设规则：
+#  1) 用户自己放了 main.mov / main.mp4（或已下载过素材包）→ 一概不碰；
+#  2) 否则把包内素材整棵铺过去：分桶目录（idle/ turn/ click/ …）+ 平铺演示片。
+if [ ! -e "$RUN_ASSETS/main.mov" ] && [ ! -e "$RUN_ASSETS/main.mp4" ] && [ ! -e "$RUN_ASSETS/manifest.json" ]; then
   for f in idle turn click drag sleep; do
     SRC="$PKG_ASSETS/$f.mov"
     DST="$RUN_ASSETS/$f.mov"
     if [ -f "$SRC" ] && [ ! -e "$DST" ]; then
       cp -f "$SRC" "$DST" 2>/dev/null || true
-      chown mobile:mobile "$DST" 2>/dev/null || true
-      chmod 644 "$DST" 2>/dev/null || true
     fi
   done
+  for b in idle turn click drag sleep balance workstatus whisper eat play; do
+    SRC="$PKG_ASSETS/$b"
+    DST="$RUN_ASSETS/$b"
+    if [ -d "$SRC" ]; then
+      mkdir -p "$DST" 2>/dev/null || true
+      cp -f "$SRC"/*.mov "$DST"/ 2>/dev/null || true
+    fi
+  done
+  if [ -f "$PKG_ASSETS/manifest.json" ] && [ ! -e "$RUN_ASSETS/manifest.json" ]; then
+    cp -f "$PKG_ASSETS/manifest.json" "$RUN_ASSETS/manifest.json" 2>/dev/null || true
+  fi
 fi
+
+chown -R mobile:mobile "$RUN_ASSETS" 2>/dev/null || true
+find "$RUN_ASSETS" -type d -exec chmod 755 {} \; 2>/dev/null || true
+find "$RUN_ASSETS" -type f -exec chmod 644 {} \; 2>/dev/null || true
 
 echo "小肥娘已安装：在 Sileo 里点“重启 SpringBoard”后生效。"
 exit 0
