@@ -71,3 +71,5 @@
 - 额外 UIWindow 的 `windowLevel = 1100` 会被短剧/视频类 App 的全屏窗口压住（宠物"消失"）；实测抬到 **1500**（状态栏 1000 之上、系统弹窗 2000 之下）才稳，老配置要写迁移，只改默认值救不了已装用户。
 - `AVPlayer` 被 audio session 中断后不会自己恢复；必须 `.ambient + mixWithOthers` + 中断结束/回前台恢复 + 3 秒看门狗，否则一播视频宠物就定格。
 - 往实现段插方法时 `str.replace("@end", ...)` 会命中**类扩展的** `@end`，方法体落进 `@interface` → `expected ';' after method prototype`；必须 `rindex("@end")` 或用方法名做锚点。
+- 素材"两套同类别"会互相抢抽签：平铺 `idle.mov`（占位 demo）和 `idle/001-idle.mov`（真素材）都归 `idle`，一半概率抽到占位。规矩：包装里只留分桶，平铺演示片一律不进 deb。
+- `postinst` 不再重启桌面之后，"装了但看起来没变"绝大多数是**没手动重启 SpringBoard**，旧 dylib 还在跑；发布说明必须把这一步写成第一条。
