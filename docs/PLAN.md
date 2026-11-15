@@ -1603,13 +1603,17 @@ const BUILTIN_PROVIDERS = [opencodeGo, commandCode, deepseekOfficial, deepseekAc
 - §15.6 的测试策略是"代码级"门，本节是"阶段级"门，两道都要过。
 - 阶段成功关闭后，才允许在 §14.1 里追加该阶段的决议（决议号连续，不跳号）。
 
-### 20.5 S0 关闭记录（占位，完成后回填）
+### 20.5 S0 关闭记录（已关闭）
 
 ```text
 阶段：S0 环境基线
-① 自检  ：待回填
-② 记忆  ：docs/journal/S00.md
-③ 推送  ：待回填
-④ 回报  ：待回填
-结论：IN PROGRESS
+① 自检  ：node scripts/check-repo.mjs -> PASS（19 项 ok，扫描 18 个文本文件无凭据，S00 六段齐）
+② 记忆  ：docs/journal/S00.md 六段齐 + MEMORY.md 阶段索引已加 S0 行
+③ 推送  ：45b4956  （18 文件，GitHub API 提交；远端 main == 本地快照）
+④ 回报  ：commit 45b4956 / 验收输出 / 下一步 S1 已写入对话
+结论：CLOSED
 ```
+
+> 注：本机**没有 git**，推送走 GitHub REST API（`/git/blobs` → `/git/trees` → `/git/commits` → `PATCH /git/refs/heads/main`），
+> 空仓库需先用 Contents API 落一个文件初始化。每次推送后校验「远端 ref sha == 本次 commit sha」。
+

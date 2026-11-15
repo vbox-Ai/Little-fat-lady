@@ -30,5 +30,9 @@
 
 | 阶段 | 状态 | journal |
 | --- | --- | --- |
-| S0 环境基线 | 进行中 | [docs/journal/S00.md](docs/journal/S00.md) |
-| S1 空壳注入 | 未开始 | — |
+| S0 环境基线 | **已关闭**（`45b4956`） | [docs/journal/S00.md](docs/journal/S00.md) |
+| S1 空壳注入 | 未开始（下一步） | — |
+
+## 闸门记录
+
+- S0：自检 PASS → journal 六段齐 → 推送 `45b4956` → 回报已写。**唯一遗留**：手机七条探针 `NOT RUN`（等操作员跑 `scripts/probe/collect-device-env.sh`）。
