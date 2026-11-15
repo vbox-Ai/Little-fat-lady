@@ -58,3 +58,7 @@
 - rootless 包会把 `layout/` 下所有路径加 `/var/jb` 前缀：静态素材不要放 `layout/var/mobile/...`（会变成 `/var/jb/var/mobile/...`），要么放 `/var/jb/Library/...` 再让 postinst 拷到 `/var/mobile`，要么全部运行时生成。
 - CI 禁止"编译失败也打包"的兜底：会让真机现象变成"改了没生效"，比直接红更浪费；`scripts/build-deb.sh` 已删该分支。
 - 用 GitHub `base_tree` 推送不会删除本地已删的文件，必须显式给 `sha: null` 条目；否则废弃路径会一直被打进 deb。
+
+- 装包脚本（postinst/postrm）里绝对禁止 `sbreload`/`killall SpringBoard`：dpkg 事务会被打断，用户会卡在 `half-configured`、一开 Sileo 就注销。生效由用户点 Sileo 的"重启 SpringBoard"。
+- `postrm` 必须按 `$1` 分支：`remove|purge` 才删数据，`upgrade` 保留，否则每次升级都清空日志与素材。
+- 用户卡在 dpkg interrupted 时，图形化自救见仓库 `docs/RECOVERY.md`（Sileo 修复 → 卸载重装 → Filza 删 lock/updates）。
