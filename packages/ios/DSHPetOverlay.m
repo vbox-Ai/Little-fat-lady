@@ -147,6 +147,17 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     // S3：有素材就把方块换成 HEVC-alpha 视频；没素材保持方块当占位。
     BOOL hasPet = [[DSHPetPlayer shared] attachToHostView:_box size:CGSizeMake(petW, petH)];
     if (hasPet) {
+        // 素材真实比例优先：不同素材宽高比不一样，写死 2160x1215 会让画面上下/左右留大片透明边，
+        // 看起来就是"宠物离边缘很远"。拿到 naturalSize 后立刻按它重算宿主高度。
+        CGSize nat = [[DSHPetPlayer shared] naturalSize];
+        if (nat.width > 1.0 && nat.height > 1.0) {
+            petH = round(petW * nat.height / nat.width);
+            CGRect f = _box.frame;
+            f.size = CGSizeMake(petW, petH);
+            _box.frame = f;
+            [[DSHPetPlayer shared] setDisplaySize:CGSizeMake(petW, petH)];
+        }
+        DSHPetLog(@"render", @"pet-aspect", @"debug", @{ @"natW": @(nat.width), @"natH": @(nat.height), @"boxW": @(petW), @"boxH": @(petH) });
         _box.backgroundColor = [UIColor clearColor];
         _box.layer.cornerRadius = 0.0;
         _box.layer.borderWidth = 0.0;

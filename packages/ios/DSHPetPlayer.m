@@ -182,4 +182,13 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 
 - (BOOL)hasAsset { return _layer != nil; }
 
+- (CGSize)naturalSize {
+    AVPlayerItem *item = _player.currentItem;
+    AVAssetTrack *t = item.asset.tracks.firstObject;
+    if (!t) return CGSizeZero;
+    CGSize s = t.naturalSize;
+    if (fabs(s.width * s.height) < 1.0) return CGSizeZero;
+    return s;
+}
+
 @end
