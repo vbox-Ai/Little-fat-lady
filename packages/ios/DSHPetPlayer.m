@@ -13,40 +13,9 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 @property (nonatomic, strong) NSURL *currentURL;
 @property (nonatomic, assign) CGSize displaySize;
 @property (nonatomic, assign) BOOL observing;
-- (void)onAudioInterruption:(NSNotification *)n {
-    NSNumber *type = n.userInfo[AVAudioSessionInterruptionTypeKey];
-    if (type.unsignedIntegerValue == AVAudioSessionInterruptionTypeEnded) {
-        [self play];
-        DSHPetLog(@"render", @"audio-resume", @"info", @{});
-    }
-}
-
-- (void)onAppActive {
-    if (_player && _player.rate == 0.0 && _currentURL) {
-        [self play];
-        DSHPetLog(@"render", @"resume-on-active", @"info", @{ @"clip": _currentURL.lastPathComponent ?: @"" });
-    }
-}
-
-- (void)startWatchdog {
-    if (_watchdog) return;
-    _watchdog = [NSTimer scheduledTimerWithTimeInterval:3.0
-                                                 target:self
-                                               selector:@selector(onWatchdog:)
-                                               userInfo:nil
-                                                repeats:YES];
-}
-
-- (void)onWatchdog:(NSTimer *)t {
-    // 只在"有素材、App 在前台、却被系统停了"时才拉一把，避免和用户手动暂停打架
-    if (!_player || !_currentURL) return;
-    if ([UIApplication sharedApplication].applicationState != UIApplicationStateActive) return;
-    if (_player.rate == 0.0) {
-        [_player play];
-        DSHPetLog(@"render", @"watchdog-resume", @"debug", @{ @"clip": _currentURL.lastPathComponent ?: @"" });
-    }
-}
-
+- (void)onAudioInterruption:(NSNotification *)n;
+- (void)onAppActive;
+- (void)onWatchdog:(NSTimer *)t;
 @end
 
 @implementation DSHPetPlayer
@@ -253,6 +222,40 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     CGSize s = t.naturalSize;
     if (fabs(s.width * s.height) < 1.0) return CGSizeZero;
     return s;
+}
+
+- (void)onAudioInterruption:(NSNotification *)n {
+    NSNumber *type = n.userInfo[AVAudioSessionInterruptionTypeKey];
+    if (type.unsignedIntegerValue == AVAudioSessionInterruptionTypeEnded) {
+        [self play];
+        DSHPetLog(@"render", @"audio-resume", @"info", @{});
+    }
+}
+
+- (void)onAppActive {
+    if (_player && _player.rate == 0.0 && _currentURL) {
+        [self play];
+        DSHPetLog(@"render", @"resume-on-active", @"info", @{ @"clip": _currentURL.lastPathComponent ?: @"" });
+    }
+}
+
+- (void)startWatchdog {
+    if (_watchdog) return;
+    _watchdog = [NSTimer scheduledTimerWithTimeInterval:3.0
+                                                 target:self
+                                               selector:@selector(onWatchdog:)
+                                               userInfo:nil
+                                                repeats:YES];
+}
+
+- (void)onWatchdog:(NSTimer *)t {
+    // 只在"有素材、App 在前台、却被系统停了"时才拉一把，避免和用户手动暂停打架
+    if (!_player || !_currentURL) return;
+    if ([UIApplication sharedApplication].applicationState != UIApplicationStateActive) return;
+    if (_player.rate == 0.0) {
+        [_player play];
+        DSHPetLog(@"render", @"watchdog-resume", @"debug", @{ @"clip": _currentURL.lastPathComponent ?: @"" });
+    }
 }
 
 @end
