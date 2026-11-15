@@ -40,6 +40,30 @@
 4. 仍不行再看 `status` 里该包的 `Status:` 行，形如 `install ok half-configured` 说明它确实卡住了，
    用 Sileo 的"重新安装"跑一遍收尾。
 
+## 4.5 一开 Sileo 就注销、怎么修都还注销（维护脚本死循环）
+
+这一种是**最坑**的形态：包处于 `half-configured`，dpkg 每次收尾都会重跑**安装当时存下来的**
+`postinst`，而那个 `postinst` 里有 `sbreload` —— 于是"收尾 → 杀桌面 → 事务再断"无限循环。
+换新包装也没用：新包的脚本不会覆盖 dpkg 里那份旧副本。
+
+要断这个环，只能把 dpkg 里那份旧脚本改掉或删掉：
+
+1. Filza 打开 `/var/jb/var/lib/dpkg/info/`（rootful 是 `/var/lib/dpkg/info/`）；
+2. 找 `com.vboxai.littlefatlady.postinst`（还有 `.postrm`、`.prerm`、`.list`、`.md5sums` 同名前缀）；
+3. 编辑 `com.vboxai.littlefatlady.postinst`，内容全删，只留两行：
+
+   ```sh
+   #!/bin/sh
+   exit 0
+   ```
+
+   保存；`.postrm` 同样处理（避免升级时被删数据）。
+4. 重开 Sileo —— 这次收尾会立刻成功，不再注销；
+5. 确认"已安装"里包状态正常后，重新安装最新 deb（`v0.1.0-42` 起脚本已不再重启 SpringBoard）。
+
+如果 Filza 里改不动（权限/只读），第 3 步改成**直接删除** `com.vboxai.littlefatlady.postinst`：
+dpkg 会因为缺脚本报一次错，但事务能结束，之后用 Sileo 重新安装覆盖即可。
+
 ## 5 最后手段
 
 - Sileo → 软件包 → 找到 `com.vboxai.littlefatlady` → 卸载；
