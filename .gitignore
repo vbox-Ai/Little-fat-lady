@@ -1,0 +1,41 @@
+# --- 依赖与构建 ---
+node_modules/
+.theos/
+packages/*/obj/
+packages/*/.theos/
+build/
+out/
+dist/
+*.deb
+*.dylib
+*.o
+*.a
+*.zip
+*.ipa
+*.tipa
+*.mo
+Packages
+Packages.gz
+Packages.bz2
+Release
+
+# --- 素材（不入库，见 LICENSE-ASSETS §3）---
+assets/webm/
+assets/mov/
+assets/memes/
+!assets/.gitkeep
+
+# --- 本地与编辑器 ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.log
+tmp/
+.cache/
+
+# --- 本机实测产物（不要提交）---
+dsh-pet-config-live.json
+dsh-pet-config-pretty.json
+dsh-pet-config-summary.txt

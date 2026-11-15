@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  selfcheck:
+    name: 仓库自检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: check-repo
+        run: node scripts/check-repo.mjs
+      - name: 版本打印
+        run: |
+          echo "VERSION=$(cat VERSION)"
+          echo "BUILD=$(git rev-list --count HEAD)"
+          echo "deb-version=$(cat VERSION)-$(git rev-list --count HEAD)"
+      - name: 文档清单
+        run: ls -l docs docs/journal scripts scripts/probe
+
+  # S1 起在此追加 deb 构建 job（rootless + roothide 双包，需 Theos）。
+  # 现在不写，避免"CI 绿但什么都没编"的假绿。
