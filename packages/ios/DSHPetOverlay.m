@@ -71,6 +71,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 @end
 
 @implementation DSHPetOverlay {
+    CGFloat _pinchStartW;
+} {
     UIWindowScene *_scene;
     DSHPetWindow *_window;
     UIView *_box;
@@ -131,8 +133,11 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     CGFloat size = [_cfg[@"size"] doubleValue];
     if (size < 120) size = 300;
     // 手机上 462 会顶满整屏，先按屏宽的 55% 收一档；用户想更大由滑块（S7）放开。
-    CGFloat maxW = CGRectGetWidth([UIScreen mainScreen].bounds) * 0.55;
+    CGFloat scrW = CGRectGetWidth([UIScreen mainScreen].bounds);
+    CGFloat maxW = scrW * 0.62;   // 上限：再大就盖住图标文字了
+    CGFloat minW = scrW * 0.16;   // 下限：太小看不清表情
     if (size > maxW) size = maxW;
+    if (size < minW) size = minW;
     CGFloat petW = size;
     CGFloat petH = round(size * 1215.0 / 2160.0);
     _box = [[UIView alloc] initWithFrame:CGRectMake(0, 0, petW, petH)];
@@ -175,6 +180,10 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(onPan:)];
     [_box addGestureRecognizer:pan];
+
+    // S7 之前先给个临时尺寸入口：双指捏合直接改大小，松手落盘
+    UIPinchGestureRecognizer *pinch = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(onPinch:)];
+    [_box addGestureRecognizer:pinch];
 
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 
@@ -225,6 +234,37 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     }];
 }
 
+- (void)onPinch:(UIPinchGestureRecognizer *)g {
+    if (g.state == UIGestureRecognizerStateBegan) {
+        _pinchStartW = CGRectGetWidth(_box.bounds);
+    }
+    CGFloat w = _pinchStartW * g.scale;
+    if (g.state == UIGestureRecognizerStateChanged || g.state == UIGestureRecognizerStateEnded) {
+        [self applyPetWidth:w];
+    }
+    if (g.state == UIGestureRecognizerStateEnded) {
+        CGFloat ratio = CGRectGetWidth(_box.bounds) / CGRectGetWidth([UIScreen mainScreen].bounds);
+        _cfg[@"size"] = @(round(CGRectGetWidth(_box.bounds)));
+        _cfg[@"sizeRatio"] = @(round(ratio * 1000.0) / 1000.0);
+        [self saveConfig];
+        DSHPetLog(@"render", @"pet-resize", @"info", @{ @"w": @(round(CGRectGetWidth(_box.bounds))), @"ratio": @(ratio) });
+    }
+}
+
+- (void)applyPetWidth:(CGFloat)w {
+    CGFloat scrW = CGRectGetWidth([UIScreen mainScreen].bounds);
+    w = MAX(scrW * 0.16, MIN(scrW * 0.62, w));
+    CGSize nat = [[DSHPetPlayer shared] naturalSize];
+    CGFloat ratio = (nat.width > 1.0) ? (nat.height / nat.width) : (1215.0 / 2160.0);
+    CGFloat h = round(w * ratio);
+    CGRect f = _box.frame;
+    CGPoint c = _box.center;
+    f.size = CGSizeMake(w, h);
+    _box.frame = f;
+    _box.center = c;
+    [[DSHPetPlayer shared] setDisplaySize:CGSizeMake(w, h)];
+}
+
 - (void)onPan:(UIPanGestureRecognizer *)g {
     CGPoint t = [g translationInView:_window];
     if (g.state == UIGestureRecognizerStateBegan) {
@@ -256,6 +296,10 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     c.x = MAX(minX, MIN(maxX, c.x));
     c.y = MAX(minY, MIN(maxY, c.y));
     return c;
+}
+
+- (void)saveConfig {
+    [_cfg writeToFile:kUIConfigPath atomically:YES];
 }
 
 - (void)clampAndPersist {
