@@ -1,4 +1,4 @@
-name: ci
+﻿name: ci
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
   build:
     name: 构建 deb（rootless · arm64+arm64e）
     needs: selfcheck
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
