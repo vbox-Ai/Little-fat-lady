@@ -50,3 +50,7 @@
 - S1 真机验收通过：rootless 包在 Relaxin 上注入成功（boot + springboard-ready，pid 14789 / iOS 17.0）→ 不需要 roothide 变体。
 - 本机**没有 git**：所有推送走 _push.mjs（GitHub REST），凭据读环境变量 GH_TOKEN，不落盘、不进仓库。
 - 空仓库首次推送必须先用 Contents API 落一个文件（否则 git-data 接口全 409 Git Repository is empty）。
+
+- 旋转时会黑边：SpringBoard 旋转快照会连高 `windowLevel` 的窗口一起拍，缓冲按旧尺寸分配 → 必须在**真旋转**发生前用 `hidden` 撤层，0.45/0.80s 后重排复显；判断用 `UIDevice.orientation` 的方向类别（比 `scene.interfaceOrientation` 早），轻微晃动不触发。
+- 透明视频素材：HEVC-alpha 只能在 macOS 编码；本机用 `ffmpeg -c:v prores_ks -profile:v 4444 -pix_fmt yuva444p10le` 出 ProRes 4444 with alpha 做验证，A16 能硬解。
+- 素材查找优先级固定为 `main.*` > 非 demo > `demo.mov`，免得演示素材盖住真素材。
