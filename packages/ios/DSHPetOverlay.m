@@ -62,12 +62,22 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 #pragma mark - 浮层
 
+@interface DSHPetOverlay ()
+- (CGRect)sceneBoundsIfValid;
+- (void)relayoutAndSettle:(BOOL)settle;
+- (CGPoint)clampedCenter:(CGPoint)c inSize:(CGSize)b;
+- (void)setLayerVisible:(BOOL)visible;
+- (void)onOrientationChange:(NSNotification *)n;
+@end
+
 @implementation DSHPetOverlay {
     UIWindowScene *_scene;
     DSHPetWindow *_window;
     UIView *_box;
     NSMutableDictionary *_cfg;
     CGPoint _panStartCenter;
+    CGSize _lastSceneSize;     // 上一次真正处理过的场景尺寸，用来过滤"轻微晃动"引起的假旋转
+    NSUInteger _orientToken;   // 旋转连发时只让最后一次收尾动作生效
 }
 
 + (instancetype)shared {
@@ -76,11 +86,6 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     dispatch_once(&once, ^{ inst = [[DSHPetOverlay alloc] init]; });
     return inst;
 }
-
-- (CGRect)sceneBoundsIfValid;
-- (void)relayoutAndSettle:(BOOL)settle;
-- (CGPoint)clampedCenter:(CGPoint)c inSize:(CGSize)b;
-- (void)setLayerVisible:(BOOL)visible;
 
 + (BOOL)attachToScene:(UIWindowScene *)scene {
     if (!scene) {
@@ -133,6 +138,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     _window.touchTarget = _box;
 
     CGSize b = scene.coordinateSpace.bounds.size;
+    _lastSceneSize = b;
     _box.center = CGPointMake(b.width * [_cfg[@"centerX"] doubleValue],
                               b.height * [_cfg[@"centerY"] doubleValue]);
 
@@ -290,20 +296,46 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 }
 
 - (void)onOrientationChange:(NSNotification *)n {
-    // 旋转期间把浮层整层藏掉：SpringBoard 会对窗口做快照再旋转，
-    // 我们这层额外窗口若参与动画，就会在屏幕上留下黑边/阴影残影。
+    if (!_window || !_box) return;
+
+    CGRect sb = [self sceneBoundsIfValid];
+    if (sb.size.width < 1.0 || sb.size.height < 1.0) return;
+
+    BOOL sizeSame = CGSizeEqualToSize(sb.size, _lastSceneSize);
+    BOOL winStale = !CGSizeEqualToSize(_window.bounds.size, sb.size);
+
+    // 手机轻微晃动会连发 UIDeviceOrientationDidChange，但场景尺寸没变。
+    // 这种情况绝不能动 alpha（一藏一显就是"闪一下"），只补一次窗口尺寸。
+    if (sizeSame) {
+        if (winStale) [self relayoutAndSettle:YES];
+        DSHPetLog(@"render", @"orient-ignore", @"debug", @{
+            @"w": @(sb.size.width),
+            @"h": @(sb.size.height),
+            @"winStale": @(winStale),
+            @"orientation": @([UIDevice currentDevice].orientation),
+        });
+        return;
+    }
+
+    _lastSceneSize = sb.size;
+    NSUInteger token = ++_orientToken;
+
+    // 只有真的换方向（尺寸变了）才藏整层：SpringBoard 会对窗口做快照再旋转，
+    // 我们这层额外窗口若参与动画，就会留下黑边/阴影残影。
     [self setLayerVisible:NO];
     __weak DSHPetOverlay *weakSelf = self;
-    // 两段收尾：0.55s 先把窗口对回场景尺寸（动画已结束，不会转两次）；
-    // 1.10s 再定位一次并显示，覆盖「180° 翻转时场景尺寸不变、只有坐标空间事件」的情形。
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.55 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        [weakSelf relayoutAndSettle:YES];
+        DSHPetOverlay *s = weakSelf;
+        if (!s || s->_orientToken != token) return;   // 期间又转了，交给最新一次收尾
+        [s relayoutAndSettle:YES];
     });
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.10 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        [weakSelf relayoutAndSettle:YES];
-        [weakSelf setLayerVisible:YES];
+        DSHPetOverlay *s = weakSelf;
+        if (!s || s->_orientToken != token) return;
+        [s relayoutAndSettle:YES];
+        [s setLayerVisible:YES];
     });
 }
 
