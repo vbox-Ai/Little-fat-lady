@@ -31,8 +31,11 @@
 | 阶段 | 状态 | journal |
 | --- | --- | --- |
 | S0 环境基线 | **已关闭**（`45b4956`） | [docs/journal/S00.md](docs/journal/S00.md) |
-| S1 空壳注入 | 未开始（下一步） | — |
+| S1 空壳注入 | **已关闭** | [docs/journal/S01.md](docs/journal/S01.md) |
+| S2 透明窗口 | 未开始（下一步） | — |
 
 ## 闸门记录
 
 - S0：自检 PASS → journal 六段齐 → 推送 `45b4956` → 回报已写。**唯一遗留**：手机七条探针 `NOT RUN`（等操作员跑 `scripts/probe/collect-device-env.sh`）。
+- 本机**没有 git**：所有推送走 _push.mjs（GitHub REST），凭据读环境变量 GH_TOKEN，不落盘、不进仓库。
+- 空仓库首次推送必须先用 Contents API 落一个文件（否则 git-data 接口全 409 Git Repository is empty）。

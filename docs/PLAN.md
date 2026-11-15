@@ -1617,3 +1617,17 @@ const BUILTIN_PROVIDERS = [opencodeGo, commandCode, deepseekOfficial, deepseekAc
 > 注：本机**没有 git**，推送走 GitHub REST API（`/git/blobs` → `/git/trees` → `/git/commits` → `PATCH /git/refs/heads/main`），
 > 空仓库需先用 Contents API 落一个文件初始化。每次推送后校验「远端 ref sha == 本次 commit sha」。
 
+### 20.6 S1 关闭记录（已关闭）
+
+``text
+阶段：S1 空壳注入
+① 自检  ：node scripts/check-repo.mjs -> PASS；六坑全部在 CI 里修毕（macos-14 不可用 / sdks 目录冲突 /
+          extern "C" / BOM / filter plist 位置 + 维护脚本 755 / deb 输出路径）
+② 记忆  ：docs/journal/S01.md 六段齐 + MEMORY.md 索引已加 S1 行与闸门记录
+③ 推送  ：见本轮 commit（GitHub REST 推送，远端 main == 本地快照）
+④ 回报  ：CI run 43687765463 双 job 绿；deb 6130B / sha256 14d15874…133f；lipo = arm64 arm64e；
+          Release v0.1.0-11 已挂 deb + SHA256SUMS
+结论：CLOSED（真机「装得上 + 有日志」为 S1 的验收残留，操作员装机后回填；不影响开 S2 的准备工作）
+``
+
+> 本条新增的硬规则：**S1 之后每个阶段的关闭记录都必须有 CI run id 与产物 sha256**，不许只写"已跑通"。

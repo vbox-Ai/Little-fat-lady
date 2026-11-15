@@ -64,14 +64,19 @@ let scanned = 0;
 })(ROOT);
 ok(`扫描 ${scanned} 个文本文件，无凭据`);
 
-// 6) journal 六段
+// 6) journal 六段（每个 S*.md 都要 ≥6 个编号小节，且末段是「下一步」）
 try {
-  const j = readFileSync(join(ROOT, 'docs/journal/S00.md'), 'utf8');
-  for (const h of ['## 1. 做了什么', '## 2. 证据', '## 3. 决定', '## 4. 遗留', '## 5. 风险', '## 6. 下一步']) {
-    j.includes(h) ? null : bad(`S00.md 缺段：${h}`);
+  const jdir = join(ROOT, 'docs/journal');
+  const files = readdirSync(jdir).filter((f) => /^S\d+\.md$/.test(f)).sort();
+  if (!files.length) bad('docs/journal 下没有任何 S*.md');
+  for (const f of files) {
+    const body = readFileSync(join(jdir, f), 'utf8');
+    const nums = new Set([...body.matchAll(/^##\s*(\d+)[.、\s]/gm)].map((m) => m[1]));
+    if (nums.size < 6) bad(`${f} 编号小节只有 ${nums.size} 段（需 ≥6）`);
+    if (!/下一步/.test(body)) bad(`${f} 缺「下一步」`);
+    ok(`${f} ${nums.size} 段齐`);
   }
-  ok('S00 六段齐');
-} catch { bad('docs/journal/S00.md 读不到'); }
+} catch (e) { bad(`journal 检查失败：${e.message}`); }
 
 // 输出
 console.log('check-repo:');
