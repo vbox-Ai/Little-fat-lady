@@ -1,12 +1,32 @@
 #!/bin/sh
-# S1：只建日志目录，把属主交给 mobile（否则 SpringBoard 里的进程写不进去）
+# DSHPet postinst —— rootless 布局下 /var/jb 由 dpkg 前缀，所以随包素材先落在
+# /var/jb/Library/Application Support/DSHPet/，这里再拷到运行目录 /var/mobile/Library/DSHPet/assets/
 set -e
-mkdir -p /var/mobile/Library/DSHPet/logs
-chown -R mobile:mobile /var/mobile/Library/DSHPet
-chmod 755 /var/mobile/Library/DSHPet /var/mobile/Library/DSHPet/logs
-exit 0
 
-# 素材目录（S3 起用于放视频；deb 里带了一段 demo.mov）
-mkdir -p /var/mobile/Library/DSHPet/assets
-chown -R mobile:mobile /var/mobile/Library/DSHPet
-chmod 755 /var/mobile/Library/DSHPet /var/mobile/Library/DSHPet/assets
+JBROOT=""
+[ -d /var/jb ] && JBROOT="/var/jb"
+
+PKG_ASSETS="$JBROOT/Library/Application Support/DSHPet"
+RUN_DIR="/var/mobile/Library/DSHPet"
+RUN_ASSETS="$RUN_DIR/assets"
+
+mkdir -p "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs"
+chown -R mobile:mobile "$RUN_DIR" 2>/dev/null || true
+chmod 755 "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs"
+
+# 只在用户没有自己的素材时铺演示片，不覆盖 main.mov
+if [ ! -e "$RUN_ASSETS/main.mov" ] && [ ! -e "$RUN_ASSETS/main.mp4" ]; then
+  if [ -f "$PKG_ASSETS/demo.mov" ]; then
+    cp -f "$PKG_ASSETS/demo.mov" "$RUN_ASSETS/demo.mov"
+    chown mobile:mobile "$RUN_ASSETS/demo.mov" 2>/dev/null || true
+    chmod 644 "$RUN_ASSETS/demo.mov"
+  fi
+fi
+
+if command -v sbreload >/dev/null 2>&1; then
+  sbreload >/dev/null 2>&1 || true
+elif command -v killall >/dev/null 2>&1; then
+  killall -9 SpringBoard 2>/dev/null || true
+fi
+
+exit 0

@@ -130,6 +130,9 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     // 宠物宿主：宽 = size，高按 2160x1215 素材比例（1.778）算。
     CGFloat size = [_cfg[@"size"] doubleValue];
     if (size < 120) size = 300;
+    // 手机上 462 会顶满整屏，先按屏宽的 55% 收一档；用户想更大由滑块（S7）放开。
+    CGFloat maxW = CGRectGetWidth([UIScreen mainScreen].bounds) * 0.55;
+    if (size > maxW) size = maxW;
     CGFloat petW = size;
     CGFloat petH = round(size * 1215.0 / 2160.0);
     _box = [[UIView alloc] initWithFrame:CGRectMake(0, 0, petW, petH)];

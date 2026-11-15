@@ -31,9 +31,9 @@ static NSString *const kPetAssetDir = @"/var/mobile/Library/DSHPet/assets";
 
 #pragma mark - 素材
 
-- (nullable NSURL *)findFirstMovie {
+- (nullable NSURL *)pickInDirectory:(NSString *)dir {
     NSFileManager *fm = [NSFileManager defaultManager];
-    NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:kPetAssetDir error:NULL];
+    NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:dir error:NULL];
     if (!names.count) return nil;
 
     NSMutableArray<NSString *> *cands = [NSMutableArray array];
@@ -57,7 +57,15 @@ static NSString *const kPetAssetDir = @"/var/mobile/Library/DSHPet/assets";
         }
     }
     if (!picked) picked = cands.firstObject;
-    return [NSURL fileURLWithPath:[kPetAssetDir stringByAppendingPathComponent:picked]];
+    return [NSURL fileURLWithPath:[dir stringByAppendingPathComponent:picked]];
+}
+
+- (nullable NSURL *)findFirstMovie {
+    // 运行目录优先（用户可写）；找不到再看随包目录（rootless 下 /var/jb 前缀，postinst 正常会拷过来，
+    // 这里兜底，避免 postinst 失败时整个 S3 只能看到占位方块）
+    NSURL *url = [self pickInDirectory:kPetAssetDir];
+    if (!url) url = [self pickInDirectory:kPetAssetDirFallback];
+    return url;
 }
 
 - (void)reloadAsset {
