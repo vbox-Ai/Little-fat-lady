@@ -33,4 +33,4 @@ else
 fi
 
 echo "== 产物 =="
-ls -l "$ROOT"/packages/ios/*.deb
+ls -l "$ROOT"/packages/ios/packages/*.deb 2>/dev/null || ls -l "$ROOT"/packages/ios/*.deb

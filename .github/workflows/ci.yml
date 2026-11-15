@@ -55,7 +55,7 @@ jobs:
       - name: 验收（arm64e 必须在 + 包结构）
         run: |
           set -e
-          deb=$(ls packages/ios/*.deb | head -1)
+          deb=$(ls packages/ios/packages/*.deb packages/ios/*.deb 2>/dev/null | head -1)
           echo "deb = $deb"
           mkdir -p unpack && dpkg-deb -R "$deb" unpack
           lib=$(find unpack -name 'DSHPet.dylib' | head -1)
@@ -70,7 +70,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dshpet-deb-s1
-          path: packages/ios/*.deb
+          path: |
+            packages/ios/packages/*.deb
+            packages/ios/*.deb
           retention-days: 30
 
   # 下一步（S2 起）：roothide 变体（patcher.sh 打补丁）、IPA 伴生、Release 自动发。

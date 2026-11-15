@@ -2,6 +2,7 @@
 node_modules/
 .theos/
 packages/*/obj/
+packages/ios/packages/
 packages/*/.theos/
 build/
 out/
