@@ -72,7 +72,6 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 @implementation DSHPetOverlay {
     CGFloat _pinchStartW;
-} {
     UIWindowScene *_scene;
     DSHPetWindow *_window;
     UIView *_box;
