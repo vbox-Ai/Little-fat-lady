@@ -2,7 +2,7 @@ Package: com.vboxai.littlefatlady
 Name: 小肥娘
 Version: 0.1.0
 Architecture: iphoneos-arm64
-Description: 小肥娘 —— dsh-pet 的 iOS 越狱移植（S1 空壳：只写启动日志，不出 UI）
+Description: 小肥娘 —— 住在 DSH 里的桌面宠物，iOS 越狱移植版
 Maintainer: vbox-Ai
 Author: vbox-Ai
 Section: Tweaks
