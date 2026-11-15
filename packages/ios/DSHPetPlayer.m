@@ -139,6 +139,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     }
 
     [self observeEnd];
+    [self watchItemStatus:item];
     [self syncLayerFrame];
 
     DSHPetLog(@"render", @"player-load", @"info", @{
@@ -148,6 +149,41 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     });
     [self play];
     return YES;
+}
+
+- (BOOL)isReady {
+    AVPlayerItem *item = _player.currentItem;
+    return item != nil && item.status == AVPlayerItemStatusReadyToPlay;
+}
+
+- (void)watchItemStatus:(AVPlayerItem *)item {
+    __weak DSHPetPlayer *weakSelf = self;
+    [item addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:NULL];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        DSHPetPlayer *s = weakSelf;
+        if (!s) return;
+        AVPlayerItem *cur = s->_player.currentItem;
+        if (!cur) return;
+        DSHPetLog(@"render", cur.status == AVPlayerItemStatusReadyToPlay ? @"player-ready" : @"player-not-ready",
+                  cur.status == AVPlayerItemStatusFailed ? @"error" : @"info",
+                  @{ @"status": @(cur.status),
+                     @"url": cur.asset ? @"yes" : @"no",
+                     @"err": cur.error.localizedDescription ?: @"none",
+                     @"dur": @(CMTimeGetSeconds(cur.duration)) });
+    });
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if ([keyPath isEqualToString:@"status"] && [object isKindOfClass:[AVPlayerItem class]]) {
+        AVPlayerItem *item = (AVPlayerItem *)object;
+        if (item.status == AVPlayerItemStatusFailed) {
+            DSHPetLog(@"render", @"player-failed", @"error", @{ @"err": item.error.localizedDescription ?: @"?" });
+        } else if (item.status == AVPlayerItemStatusReadyToPlay) {
+            DSHPetLog(@"render", @"player-ok", @"info", @{ @"w": @(item.presentationSize.width), @"h": @(item.presentationSize.height) });
+        }
+        return;
+    }
+    [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
 }
 
 - (void)reloadAsset {

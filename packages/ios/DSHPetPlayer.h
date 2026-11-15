@@ -26,6 +26,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly, nullable) NSURL *currentURL;
 @property (nonatomic, readonly) BOOL hasAsset;
 
+/// 首帧是否已可播（item.status == readyToPlay）。没 ready 就说明素材是坏的/解码失败，
+/// 这种情况浮层必须把占位块亮回来，否则桌面上什么都看不到。
+@property (nonatomic, readonly) BOOL isReady;
+
 /// 当前素材的原始像素尺寸（无素材时返回 CGSizeZero）。
 /// 宿主尺寸要按这个比例算，写死 2160x1215 会让不同素材出现大片透明边。
 @property (nonatomic, readonly) CGSize naturalSize;

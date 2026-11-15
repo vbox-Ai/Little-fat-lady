@@ -177,11 +177,30 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
             [[DSHPetPlayer shared] setDisplaySize:CGSizeMake(petW, petH)];
         }
         DSHPetLog(@"render", @"pet-aspect", @"debug", @{ @"natW": @(nat.width), @"natH": @(nat.height), @"boxW": @(petW), @"boxH": @(petH) });
-        _box.backgroundColor = [UIColor clearColor];
-        _box.layer.cornerRadius = 0.0;
-        _box.layer.borderWidth = 0.0;
         _box.accessibilityLabel = @"小肥娘";
         [[DSHPetAnimator shared] startWithDirectory:@"/var/mobile/Library/DSHPet/assets"];
+
+        // 关键：**先别把占位块清掉**。早先一 attach 就设 clearColor，一旦视频解码失败/
+        // 素材是坏的，桌面上就什么都没有（0.1.0-56 的真机现象：蓝水母和小肥娘都看不见）。
+        // 现在只有首帧真的 ready 才清背景；2 秒还没 ready 就把块亮回来当"看得见的故障态"。
+        __weak typeof(self) weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) s = weakSelf;
+            if (!s || !s->_box) return;
+            BOOL ready = [[DSHPetPlayer shared] isReady];
+            DSHPetLog(@"render", ready ? @"box-hide" : @"box-keep", ready ? @"debug" : @"warn",
+                      @{ @"size": NSStringFromCGSize(s->_box.bounds.size),
+                         @"center": NSStringFromCGPoint(s->_box.center),
+                         @"window": NSStringFromCGRect(s->_window.frame) });
+            if (ready) {
+                s->_box.backgroundColor = [UIColor clearColor];
+                s->_box.layer.cornerRadius = 0.0;
+                s->_box.layer.borderWidth = 0.0;
+            } else {
+                s->_box.backgroundColor = [UIColor colorWithRed:0.85 green:0.25 blue:0.35 alpha:0.85];
+                s->_box.accessibilityLabel = @"小肥娘（素材没解码成功，先显示故障色）";
+            }
+        });
     } else {
         _box.accessibilityLabel = @"小肥娘（占位，未装素材）";
     }
