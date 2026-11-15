@@ -53,7 +53,6 @@ static NSString *const kCatOther = @"other";
 
 - (void)buildIndex {
     [self.groups removeAllObjects];
-    NSFileManager *fm = [NSFileManager defaultManager];
     NSMutableArray<NSString *> *scanDirs = [NSMutableArray array];
     if (self.dir.length) [scanDirs addObject:self.dir];
     for (NSString *r in DSHPetAssetRoots()) {
