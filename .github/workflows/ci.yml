@@ -1,4 +1,4 @@
-﻿name: ci
+name: ci
 
 on:
   push:
@@ -37,12 +37,15 @@ jobs:
 
       - name: 装工具链（Theos + ldid + dpkg）
         run: |
-          brew install ldid dpkg xz >/dev/null 2>&1 || brew install ldid dpkg
+          brew install ldid dpkg || true
+          echo "ldid: $(command -v ldid || echo MISSING)"
+          echo "dpkg-deb: $(command -v dpkg-deb || echo MISSING)"
           export THEOS="$RUNNER_TEMP/theos"
           git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
+          rm -rf "$THEOS/sdks"
           git clone --depth 1 https://github.com/theos/sdks.git "$THEOS/sdks"
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
-          echo "theos ok: $(ls "$THEOS" | head -5 | tr '\n' ' ')"
+          echo "sdks: $(ls "$THEOS/sdks" | head -5 | tr '\n' ' ')"
 
       - name: 编译
         run: |
