@@ -40,3 +40,4 @@ tmp/
 dsh-pet-config-live.json
 dsh-pet-config-pretty.json
 dsh-pet-config-summary.txt
+packages/ios/DSHPetVersion.h

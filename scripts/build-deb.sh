@@ -11,6 +11,14 @@ DEBVER="${VER}-${BUILD}"
 
 cd "$ROOT/packages/ios"
 echo "== 版本：$DEBVER =="
+
+# 版本常量注入（方案 §4.5）：编译期把 VERSION-BUILD 写进 dylib，面板「关于」读同一份
+cat > DSHPetVersion.h <<EOF
+// 自动生成，勿手改（scripts/build-deb.sh）
+#define DSHPET_VERSION_STRING @"${DEBVER}"
+EOF
+echo "== 生成 DSHPetVersion.h：${DEBVER} =="
+
 make clean >/dev/null 2>&1 || true
 
 if make package FINALPACKAGE=1 \
