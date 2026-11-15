@@ -63,10 +63,10 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 #pragma mark - 浮层
 
 @interface DSHPetOverlay ()
-- (CGRect)sceneBoundsIfValid;
 - (void)relayoutAndSettle:(BOOL)settle;
 - (CGPoint)clampedCenter:(CGPoint)c inSize:(CGSize)b;
 - (void)onOrientationChange:(NSNotification *)n;
+- (void)setLayerVisible:(BOOL)visible;
 @end
 
 @implementation DSHPetOverlay {
@@ -75,6 +75,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     UIView *_box;
     NSMutableDictionary *_cfg;
     CGPoint _panStartCenter;
+    UIInterfaceOrientation _lastInterfaceOrient;
+    NSUInteger _orientToken;
 }
 
 + (instancetype)shared {
@@ -104,6 +106,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     }
 
     _scene = scene;
+    _lastInterfaceOrient = scene.interfaceOrientation;
     _window = [[DSHPetWindow alloc] initWithWindowScene:scene];
     _window.frame = scene.coordinateSpace.bounds;
     _window.windowLevel = (CGFloat)[_cfg[@"windowLevel"] doubleValue];
@@ -300,21 +303,58 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (void)onOrientationChange:(NSNotification *)n {
     if (!_window || !_box) return;
 
-    // 不再藏窗口、不再改 frame。窗口尺寸由 UIKit 换，layoutSubviews 会自动重排；
-    // 这里只补一次延迟校正，兜住"旋转动画结束、安全区最后才更新"的时序差。
-    CGSize b = _window.bounds.size;
-    DSHPetLog(@"render", @"orient", @"debug", @{
-        @"w": @(b.width),
-        @"h": @(b.height),
-        @"orientation": @([UIDevice currentDevice].orientation),
-        @"name": n.name ?: @"",
-    });
+    // 用设备方向做"早退场"：它比 scene.interfaceOrientation 早，
+    // 能在 SpringBoard 开始拍旋转快照之前把这一层撤出合成。
+    // 轻微晃动只会让相邻两个方向来回抖，方向类别没变就直接忽略。
+    UIDeviceOrientation d = [UIDevice currentDevice].orientation;
+    UIInterfaceOrientation target = UIInterfaceOrientationUnknown;
+    if (d == UIDeviceOrientationPortrait) target = UIInterfaceOrientationPortrait;
+    else if (d == UIDeviceOrientationPortraitUpsideDown) target = UIInterfaceOrientationPortraitUpsideDown;
+    else if (d == UIDeviceOrientationLandscapeLeft) target = UIInterfaceOrientationLandscapeRight;
+    else if (d == UIDeviceOrientationLandscapeRight) target = UIInterfaceOrientationLandscapeLeft;
+
+    if (target == UIInterfaceOrientationUnknown || target == _lastInterfaceOrient) {
+        DSHPetLog(@"render", @"orient-ignore", @"debug", @{
+            @"dev": @(d),
+            @"iface": @(_lastInterfaceOrient),
+            @"name": n.name ?: @"",
+        });
+        return;
+    }
+    _lastInterfaceOrient = target;
+    NSUInteger token = ++_orientToken;
+
+    // 旋转期间整层退出合成：SpringBoard 拍旋转快照时会把我们这层一起拍进去，
+    // 快照缓冲只有当前（旧）尺寸那么大，叠在旋转动画上，屏幕外围就是一圈黑。
+    [self setLayerVisible:NO];
+    DSHPetLog(@"render", @"orient", @"info", @{ @"dev": @(d), @"target": @(target) });
 
     __weak DSHPetOverlay *weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        [weakSelf relayoutAndSettle:YES];
+        DSHPetOverlay *s = weakSelf;
+        if (!s || s->_orientToken != token) return;
+        [s relayoutAndSettle:YES];
     });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.80 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        DSHPetOverlay *s = weakSelf;
+        if (!s || s->_orientToken != token) return;
+        [s relayoutAndSettle:YES];
+        [s setLayerVisible:YES];
+    });
+}
+
+- (void)setLayerVisible:(BOOL)visible {
+    if (!_window) return;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    if (visible) {
+        _window.hidden = NO;
+    } else {
+        _window.hidden = YES;
+    }
+    [CATransaction commit];
 }
 
 - (void)detach {
