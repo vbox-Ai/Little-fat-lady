@@ -24,7 +24,7 @@ chmod 755 "$RUN_DIR" "$RUN_ASSETS" "$RUN_DIR/config" "$RUN_DIR/logs" 2>/dev/null
 if [ ! -e "$RUN_ASSETS/main.mov" ] && [ ! -e "$RUN_ASSETS/main.mp4" ] && [ ! -e "$RUN_ASSETS/manifest.json" ]; then
   # 先铺分桶素材（真素材），再决定要不要铺平铺演示片。
   BUCKET_COPIED=0
-  for b in idle turn click drag sleep balance workstatus whisper eat play; do
+  for b in idle turn click drag sleep balance workstatus whisper eat play color matte; do
     SRC="$PKG_ASSETS/$b"
     DST="$RUN_ASSETS/$b"
     if [ -d "$SRC" ]; then

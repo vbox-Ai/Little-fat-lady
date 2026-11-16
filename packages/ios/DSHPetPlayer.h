@@ -11,6 +11,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// S4：切到指定片段（状态机用）。不会重建 layer，只换 AVPlayerItem。
 - (BOOL)playClipAtURL:(NSURL *)url;
 
+/// 方案 A：彩色路 + 蒙版路，两路同时在播放器里跑，用 CoreImage 合成出真透明。
+/// 上游没给 HEVC-alpha，ProRes 4444-alpha 在 iOS 播放链路又不稳，所以自己合。
+- (BOOL)playClipAtURL:(NSURL *)url matteURL:(nullable NSURL *)matteURL;
+
 + (instancetype)shared;
 
 /// 把播放层挂到宿主 view 上；size 是宠物在屏幕上的显示尺寸。

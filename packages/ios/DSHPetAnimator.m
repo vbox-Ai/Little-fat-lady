@@ -3,8 +3,8 @@
 #import "DSHPetPlayer.h"
 #import "DSHPetBoot.h"
 
-/// 动作类别。识别方式：文件名（不含扩展名）以类别名开头即归入该类，
-/// 例如 idle.mov / idle-2.mov / click.mov / move.crab.mov。
+    // 选素材段数最多的那个根：旧占位片只有 5 段，真素材有 114 段
+    // 选素材段数最多的那个根：旧占位片只有 5 段，真素材有 114 段
 static NSString *const kCatIdle = @"idle";
 static NSString *const kCatTurn = @"turn";
 static NSString *const kCatMove = @"move";
@@ -59,9 +59,12 @@ static NSString *const kCatOther = @"other";
     if (self.dir.length) [scanDirs addObject:self.dir];
     for (NSString *r in DSHPetAssetRoots()) {
         if (![scanDirs containsObject:r]) [scanDirs addObject:r];
+        NSString *c = [r stringByAppendingPathComponent:@"color"];
+        if (![scanDirs containsObject:c] &&
+            [[NSFileManager defaultManager] fileExistsAtPath:c]) {
+            [scanDirs addObject:c];
+        }
     }
-    // 选"素材最多"的那个根：运行目录里可能只剩几段老的占位演示片（5 段），
-    // 而真素材（114 段）在越狱根里；只认第一个有料的根会导致一直播占位片。
     NSMutableDictionary<NSString *, NSMutableDictionary *> *perRoot = [NSMutableDictionary dictionary];
     NSUInteger bestCount = 0;
     NSString *bestDir = nil;
@@ -88,9 +91,6 @@ static NSString *const kCatOther = @"other";
     NSFileManager *fm = [NSFileManager defaultManager];
     NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:scanDir error:NULL] ?: @[];
 
-    // 两种组织方式都吃：
-    //  A) 平铺：idle.mov / click-2.mov（按文件名前缀分类）
-    //  B) 分桶：idle/001-idle.mov、workstatus/007-workstatus.mov（按目录名分类，上游素材包就是这种）
     for (NSString *n in [names sortedArrayUsingSelector:@selector(compare:)]) {
         NSString *full = [self.dir stringByAppendingPathComponent:n];
         BOOL isDir = NO;
@@ -127,10 +127,18 @@ static NSString *const kCatOther = @"other";
 
 - (BOOL)play:(nullable NSString *)file {
     if (!file.length) return NO;
-    // 索引里存的是绝对路径（素材可能来自 /var/jb 或 /Library 假根），别再拼 self.dir
     NSString *path = [file isAbsolutePath] ? file : [self.dir stringByAppendingPathComponent:file];
     NSURL *url = [NSURL fileURLWithPath:path];
-    BOOL ok = [[DSHPetPlayer shared] playClipAtURL:url];
+    NSURL *matteURL = nil;
+    NSRange rng = [path rangeOfString:@"/color/"];
+    if (rng.location != NSNotFound) {
+        NSString *mp = [path stringByReplacingCharactersInRange:rng withString:@"/matte/"];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:mp]) {
+            matteURL = [NSURL fileURLWithPath:mp];
+        }
+    }
+    BOOL ok = matteURL ? [[DSHPetPlayer shared] playClipAtURL:url matteURL:matteURL]
+                       : [[DSHPetPlayer shared] playClipAtURL:url];
     if (ok) {
         self.currentClip = file;
         DSHPetLog(@"anim", @"play", @"debug", @{ @"clip": file });
@@ -159,7 +167,6 @@ static NSString *const kCatOther = @"other";
 
 - (void)scheduleIdle {
     [self.idleTimer invalidate];
-    // 6~14 秒之间随便一个点，别做成节拍器
     NSTimeInterval gap = 6.0 + (double)arc4random_uniform(8000) / 1000.0;
     __weak DSHPetAnimator *weakSelf = self;
     self.idleTimer = [NSTimer scheduledTimerWithTimeInterval:gap
@@ -179,7 +186,6 @@ static NSString *const kCatOther = @"other";
         NSString *s = [self pickFrom:kCatSleep];
         if ([self play:s]) { [self scheduleIdle]; return; }
     }
-    // 待机抽签：55% idle、20% 东张西望、15% 玩耍、10% 吃
     uint32_t r = arc4random_uniform(100);
     NSString *file = nil;
     if (r < 55)      file = [self pickFrom:kCatIdle];

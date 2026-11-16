@@ -4,12 +4,28 @@
 #import <AVFoundation/AVAudioSession.h>
 #import "DSHPetBoot.h"
 #import <AVFoundation/AVFoundation.h>
+#import <CoreImage/CoreImage.h>
+#import <QuartzCore/QuartzCore.h>
 
 static NSString *const kPetAssetDir = @"/var/mobile/Library/DSHPet/assets";
 static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Support/DSHPet";
 
-@interface DSHPetPlayer ()
+@interface DSHPetPlayer () {
+    AVPlayer *_mattePlayer;
+    AVPlayerItemVideoOutput *_colorOut;
+    AVPlayerItemVideoOutput *_matteOut;
+    CADisplayLink *_link;
+    CIContext *_ci;
+    BOOL _compositeReady;
+    CGSize _naturalSize;
+}
 @property (nonatomic, strong) UIView *host;
+@property (nonatomic, strong) CALayer *contentLayer;
+@property (nonatomic, strong) NSURL *matteURL;
+- (void)playClipAtURL:(NSURL *)url matteURL:(nullable NSURL *)matteURL;
+- (void)startCompositeWithColorURL:(NSURL *)curl matteURL:(NSURL *)murl;
+- (void)stopComposite;
+- (void)onTick:(CADisplayLink *)link;
 @property (nonatomic, strong) AVPlayerLayer *layer;
 @property (nonatomic, strong) AVPlayer *player;
 @property (nonatomic, strong) NSURL *currentURL;
@@ -152,6 +168,146 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     return YES;
 }
 
+- (void)startCompositeWithColorURL:(NSURL *)curl matteURL:(NSURL *)murl {
+    [self stopComposite];
+    _matteURL = murl;
+
+    NSDictionary *attrs = @{ (id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) };
+    _colorOut = [[AVPlayerItemVideoOutput alloc] initWithPixelBufferAttributes:attrs];
+    _matteOut = [[AVPlayerItemVideoOutput alloc] initWithPixelBufferAttributes:attrs];
+
+    AVPlayerItem *cItem = [AVPlayerItem playerItemWithAsset:[AVURLAsset URLAssetWithURL:curl options:nil]];
+    AVPlayerItem *mItem = [AVPlayerItem playerItemWithAsset:[AVURLAsset URLAssetWithURL:murl options:nil]];
+    [cItem addOutput:_colorOut];
+    [mItem addOutput:_matteOut];
+
+    if (!_player) {
+        _player = [AVPlayer playerWithPlayerItem:cItem];
+        _player.muted = YES;
+        _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+        _player.allowsExternalPlayback = NO;
+    } else {
+        [_player replaceCurrentItemWithPlayerItem:cItem];
+    }
+    if (!_mattePlayer) {
+        _mattePlayer = [AVPlayer playerWithPlayerItem:mItem];
+        _mattePlayer.muted = YES;
+        _mattePlayer.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+    } else {
+        [_mattePlayer replaceCurrentItemWithPlayerItem:mItem];
+    }
+    _player.automaticallyWaitsToMinimizeStalling = NO;
+    _mattePlayer.automaticallyWaitsToMinimizeStalling = NO;
+
+    if (!_contentLayer) {
+        _contentLayer = [CALayer layer];
+        _contentLayer.opaque = NO;
+        _contentLayer.backgroundColor = [UIColor clearColor].CGColor;
+        _contentLayer.contentsGravity = kCAGravityResizeAspect;
+        _contentLayer.magnificationFilter = kCAFilterLinear;
+        _contentLayer.minificationFilter = kCAFilterLinear;
+    }
+    if (_contentLayer.superlayer == nil && _host) {
+        [_host.layer addSublayer:_contentLayer];
+        [self syncLayerFrame];
+    }
+
+    _compositeReady = NO;
+    _link = [CADisplayLink displayLinkWithTarget:self selector:@selector(onTick:)];
+    _link.preferredFramesPerSecond = 12;
+    [_link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+
+    [_player play];
+    [_mattePlayer play];
+    [self observeEnd];
+}
+
+- (void)stopComposite {
+    [_link invalidate];
+    _link = nil;
+    [_player pause];
+    [_mattePlayer pause];
+    _colorOut = nil;
+    _matteOut = nil;
+    _compositeReady = NO;
+}
+
+- (void)onTick:(CADisplayLink *)link {
+    if (!_colorOut || !_matteOut) return;
+    AVPlayerItem *cItem = _player.currentItem;
+    AVPlayerItem *mItem = _mattePlayer.currentItem;
+    if (!cItem || !mItem) return;
+    if (cItem.status != AVPlayerItemStatusReadyToPlay || mItem.status != AVPlayerItemStatusReadyToPlay) return;
+
+    CMTime t = cItem.currentTime;
+    if ([cItem duration].flags && CMTimeCompare(t, cItem.duration) >= 0) {
+        // 循环：两路同时回零，避免音画/影音错位
+        [cItem seekToTime:kCMTimeZero toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+        [mItem seekToTime:kCMTimeZero toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+        return;
+    }
+    CVPixelBufferRef cb = [_colorOut copyPixelBufferForItemTime:t itemTimeForDisplay:NULL];
+    CVPixelBufferRef mb = [_matteOut copyPixelBufferForItemTime:t itemTimeForDisplay:NULL];
+    if (!cb || !mb) {
+        if (cb) CVPixelBufferRelease(cb);
+        if (mb) CVPixelBufferRelease(mb);
+        return;
+    }
+
+    if (!_ci) _ci = [CIContext contextWithOptions:@{ kCIContextUseSoftwareRenderer: @NO }];
+
+    CIImage *color = [CIImage imageWithCVPixelBuffer:cb];
+    CIImage *matte = [CIImage imageWithCVPixelBuffer:mb];
+    // 灰度蒙版 → 把亮度搬到 alpha（CIBlendWithMask 认的是 alpha）
+    CIImage *mask = [matte imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
+        @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
+        @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+        @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+        @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+    }];
+    CIImage *clear = [[CIImage imageWithColor:[CIColor colorWithRed:0 green:0 blue:0 alpha:0]]
+                      imageByCroppingToRect:color.extent];
+    CIImage *out = [[CIFilter filterWithName:@"CIBlendWithMask" keysAndValues:
+                     kCIInputImageKey, color,
+                     kCIInputBackgroundImageKey, clear,
+                     kCIInputMaskImageKey, mask, nil] outputImage];
+
+    CGImageRef cg = [_ci createCGImage:out fromRect:color.extent];
+    if (cg) {
+        _contentLayer.contents = (__bridge_transfer id)cg;
+        if (!_compositeReady) {
+            _compositeReady = YES;
+            _naturalSize = CGSizeMake(CGImageGetWidth(cg), CGImageGetHeight(cg));
+            DSHPetLog(@"render", @"composite-ok", @"info", @{
+                @"w": @(_naturalSize.width), @"h": @(_naturalSize.height) });
+        }
+    }
+    CVPixelBufferRelease(cb);
+    CVPixelBufferRelease(mb);
+}
+
+- (BOOL)playClipAtURL:(NSURL *)url matteURL:(nullable NSURL *)matteURL {
+    if (!url) return NO;
+    if (!matteURL) {
+        [self stopComposite];
+        _contentLayer.contents = nil;
+        return [self playClipAtURL:url];
+    }
+    if (_currentURL && [_currentURL.path isEqualToString:url.path] &&
+        _matteURL && [_matteURL.path isEqualToString:matteURL.path] && _link) {
+        [_player play];
+        [_mattePlayer play];
+        return YES;
+    }
+    _currentURL = url;
+    [self startCompositeWithColorURL:url matteURL:matteURL];
+    DSHPetLog(@"render", @"player-load", @"info", @{
+        @"file": url.lastPathComponent ?: @"",
+        @"matte": matteURL.lastPathComponent ?: @"",
+        @"mode": @"composite" });
+    return YES;
+}
+
 - (nullable UIImage *)posterImage {
     if (!_currentURL) return nil;
     AVAsset *asset = [AVURLAsset URLAssetWithURL:_currentURL options:nil];
@@ -172,6 +328,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 }
 
 - (BOOL)isReady {
+    if (_compositeReady) return YES;
     AVPlayerItem *item = _player.currentItem;
     return item != nil && item.status == AVPlayerItemStatusReadyToPlay;
 }
@@ -248,12 +405,16 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     _displaySize = size;
     [self reloadAsset];
 
+    if (_contentLayer) {
+        [_host.layer addSublayer:_contentLayer];
+        [self syncLayerFrame];
+    }
     if (_layer) {
         [_host.layer addSublayer:_layer];
         [self syncLayerFrame];
-        [self play];
     }
-    return _layer != nil;
+    if (_player) [self play];
+    return _layer != nil || _contentLayer != nil;
 }
 
 - (void)setDisplaySize:(CGSize)size {
@@ -268,6 +429,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     [CATransaction setDisableActions:YES];
     CGRect b = self.host ? self.host.bounds : CGRectMake(0, 0, _displaySize.width, _displaySize.height);
     _layer.frame = b;
+    _contentLayer.frame = b;
     [CATransaction commit];
 }
 
@@ -300,14 +462,16 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 }
 
 - (void)pause {
+    if (_mattePlayer) [_mattePlayer pause];
     if (!_player) return;
     [_player pause];
     DSHPetLog(@"render", @"player-pause", @"debug", nil);
 }
 
-- (BOOL)hasAsset { return _layer != nil; }
+- (BOOL)hasAsset { return _layer != nil || _contentLayer != nil; }
 
 - (CGSize)naturalSize {
+    if (_compositeReady && _naturalSize.width > 1) return _naturalSize;
     AVPlayerItem *item = _player.currentItem;
     AVAssetTrack *t = item.asset.tracks.firstObject;
     if (!t) return CGSizeZero;
