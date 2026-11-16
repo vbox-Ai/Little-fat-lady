@@ -32,6 +32,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 @property (nonatomic, strong) NSURL *matteURL;
 - (void)startCompositeWithColorURL:(NSURL *)curl matteURL:(NSURL *)murl;
 - (void)stopComposite;
+- (void)layoutContentsForImage:(CGImageRef)img;
 - (void)onTick:(CADisplayLink *)link;
 @property (nonatomic, strong) AVPlayerLayer *layer;
 @property (nonatomic, strong) AVPlayer *player;
@@ -337,18 +338,32 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 }
 
 
-// 让「一个源像素 = 一个屏幕像素」：contentsScale 必须等于 图像宽/图层宽(点)。
-// 之前固定成 [UIScreen scale]，只要图层点宽不是图像的 1/3 整，CA 就会把整张图
-// 重采样一次——这就是"怎么都糊、点一下（transform 变了触发重绘）又清楚一会儿"的来源。
-- (void)matchContentsScaleTo:(CGImageRef)img {
+// 让「一个源像素 = 一个屏幕像素」，且**不许拉伸**。
+// 做法：按图像自身比例在宿主 bounds 里做 aspect-fit，得到 rect；
+// 把 contentLayer.frame 设成 rect，contentsScale = 图像宽/rect 宽，gravity 用 Resize 填满 rect。
+// 只改 contentsScale 不改 frame 的话，Resize 会按图层比例拉伸（0.1.0-94 的"拉长"）；
+// 用 ResizeAspect 不拉伸，但又会二次缩放导致发糊。
+- (void)layoutContentsForImage:(CGImageRef)img {
     if (!img) return;
     CGFloat imgW = (CGFloat)CGImageGetWidth(img);
-    CGFloat layerW = CGRectGetWidth(self.contentLayer.bounds);
-    if (imgW < 1.0 || layerW < 1.0) return;
-    CGFloat s = imgW / layerW;
-    if (fabs(self.contentLayer.contentsScale - s) > 0.01) {
-        self.contentLayer.contentsScale = s;
-    }
+    CGFloat imgH = (CGFloat)CGImageGetHeight(img);
+    if (imgW < 1.0 || imgH < 1.0) return;
+
+    CGRect box = self.host ? self.host.bounds : self.contentLayer.superlayer.bounds;
+    if (CGRectGetWidth(box) < 1.0 || CGRectGetHeight(box) < 1.0) return;
+
+    CGFloat scaleFit = MIN(CGRectGetWidth(box) / imgW, CGRectGetHeight(box) / imgH);
+    CGFloat w = imgW * scaleFit;
+    CGFloat h = imgH * scaleFit;
+    CGRect rect = CGRectMake(CGRectGetMidX(box) - w / 2.0,
+                             CGRectGetMidY(box) - h / 2.0, w, h);
+
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.contentLayer.frame = rect;
+    self.contentLayer.contentsGravity = kCAGravityResize;
+    self.contentLayer.contentsScale = imgW / MAX(w, 1.0);
+    [CATransaction commit];
 }
 
 - (BOOL)isReady {
@@ -565,7 +580,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         _naturalSize = CGSizeMake(CGImageGetWidth((__bridge CGImageRef)img),
                                   CGImageGetHeight((__bridge CGImageRef)img));
     }
-    [self matchContentsScaleTo:(__bridge CGImageRef)img];
+    [self layoutContentsForImage:(__bridge CGImageRef)img];
     self.contentLayer.contents = img;
     _compositeReady = YES;
     if (!_webpFirstPosted) {
