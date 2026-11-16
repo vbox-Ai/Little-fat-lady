@@ -93,3 +93,4 @@
 - 素材分辨率要配显示尺寸：包内 300px 宽，桌面默认 118pt（@3x ≈ 354px），等于放大 18%；再模糊就重出 420px 宽素材包。
 - 上游 webm 的 alpha 在 WebM AlphaMode 边数据里，ffmpeg 默认 vp9 解码器会丢弃（日志：`Ignoring unsupported WebM alpha channel side data`）；必须 `-c:v libvpx-vp9 -i in.webm` 才能拿到真透明。
 - 素材宽度要 >= 显示像素：桌面默认 118pt @3x≈354px，所以常驻动作出 360px、稀有动作 300px（混合包 69MB）。
+- 「等就绪再撤占位」这类逻辑，通知订阅必须在触发动作之前注册；否则首帧很快时通知必被丢掉（0.1.0-90 的绿方块裹宠物就是这么来的）。
