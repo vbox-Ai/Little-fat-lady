@@ -607,7 +607,10 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         self.contentLayer.contentsGravity = kCAGravityResizeAspect;
         self.contentLayer.allowsGroupOpacity = NO;
         self.contentLayer.shouldRasterize = NO;
+        // 帧像素 >= 显示像素时才锐：常驻动作按 360px 出图（118pt @3x ≈ 354px），
+        // 显示层按屏幕 scale 摆，等于缩小采样；若帧比显示小，则变成放大 → 一定糊。
         self.contentLayer.contentsScale = [UIScreen mainScreen].scale;
+        self.contentLayer.contentsFormat = kCAContentsFormatRGBA8Uint;
     }
     if (self.host && self.contentLayer.superlayer != self.host.layer) {
         [self.contentLayer removeFromSuperlayer];
