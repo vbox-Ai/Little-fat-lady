@@ -29,15 +29,30 @@ jobs:
   build:
     name: 构建 deb（rootless · arm64+arm64e）
     needs: selfcheck
-    # macOS runner 会排队到 15 分钟被 cancel（2026-11-16 起连续三次空转），
-    # 而 Theos 在 Linux 上一样能编，免费额度还是 10 倍，所以整条构建挪到 ubuntu。
-    runs-on: ubuntu-latest
+    # macOS runner 偶尔会排队到 15 分钟被 cancel（2026-11-16 出现过三次空转）。
+    # 真遇到就把下面这行换成 ubuntu-latest：工具链步骤里有 runner.os 分支，
+    # 但 Linux 的 ld64 目前还没打通（Theos 需要 Darwin 版 ld64）。
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 装工具链（Theos + ldid + dpkg，Linux 版）
+      - name: 装工具链（Theos + ldid + dpkg）
+        if: runner.os == 'macOS'
+        run: |
+          set -e
+          brew install ldid dpkg || true
+          export THEOS="$RUNNER_TEMP/theos"
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
+          rm -rf "$THEOS/sdks"
+          git clone --depth 1 https://github.com/theos/sdks.git "$THEOS/sdks"
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+          echo "ldid: $(command -v ldid || echo MISSING)"
+          echo "dpkg-deb: $(command -v dpkg-deb || echo MISSING)"
+
+      - name: 装工具链（Linux 备用）
+        if: runner.os == 'Linux'
         run: |
           set -e
           sudo apt-get update -qq
