@@ -74,6 +74,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (CGPoint)clampedCenter:(CGPoint)c inSize:(CGSize)b;
 - (void)onOrientationChange:(NSNotification *)n;
 - (void)setLayerVisible:(BOOL)visible;
+- (void)hideBoxChrome;
 @end
 
 @implementation DSHPetOverlay {
@@ -86,6 +87,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     UIInterfaceOrientation _lastInterfaceOrient;
     NSUInteger _orientToken;
     id _firstFrameObs;
+    BOOL _firstFrameSeen;
 }
 
 + (instancetype)shared {
@@ -179,11 +181,9 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         }
         DSHPetLog(@"render", @"pet-aspect", @"debug", @{ @"natW": @(nat.width), @"natH": @(nat.height), @"boxW": @(petW), @"boxH": @(petH) });
         _box.accessibilityLabel = @"小肥娘";
-        [[DSHPetAnimator shared] startWithDirectory:@"/var/mobile/Library/DSHPet/assets"];
-
-        // 首帧一到就撤占位块。
-        // 以前只在 2 秒后做一次兜底检查，真机表现就是注销后先看到 1~3 秒绿色/蓝色方块，
-        // 然后才"变"成小肥娘——其实第一帧早就出来了，只是没人通知我们。
+        // 先把「撤占位块」的规矩立好，再开播——
+        // 之前是先 startWithDirectory 再注册观察者，首帧可能在这中间就画完了，
+        // 通知没人接，桌面就成了「绿方块里裹着一只小肥娘」（0.1.0-90 真机现象）。
         if (_firstFrameObs) {
             [[NSNotificationCenter defaultCenter] removeObserver:_firstFrameObs];
             _firstFrameObs = nil;
@@ -194,13 +194,24 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
                                                                         usingBlock:^(NSNotification *note) {
             __strong typeof(self) s = self;
             if (!s || !s->_box) return;
-            s->_box.backgroundColor = [UIColor clearColor];
-            s->_box.layer.cornerRadius = 0.0;
-            s->_box.layer.borderWidth = 0.0;
-            s->_box.layer.borderColor = [UIColor clearColor].CGColor;
-            DSHPetLog(@"render", @"box-hide-firstframe", @"debug", nil);
+            s->_firstFrameSeen = YES;
+            [s hideBoxChrome];
         }];
 
+        // 有素材就别先摆绿底：宁可先空着 200ms，也不要让人看见「方块里长出一只宠物」。
+        _box.backgroundColor = [UIColor clearColor];
+        _box.layer.cornerRadius = 0.0;
+        _box.layer.borderWidth = 0.0;
+
+        [[DSHPetAnimator shared] startWithDirectory:@"/var/mobile/Library/DSHPet/assets"];
+        if ([[DSHPetPlayer shared] isReady]) {
+            _firstFrameSeen = YES;
+            [self hideBoxChrome];
+        }
+
+        // 首帧一到就撤占位块。
+        // 以前只在 2 秒后做一次兜底检查，真机表现就是注销后先看到 1~3 秒绿色/蓝色方块，
+        
         // 关键：**先别把占位块清掉**。早先一 attach 就设 clearColor，一旦视频解码失败/
         // 素材是坏的，桌面上就什么都没有（0.1.0-56 的真机现象：蓝水母和小肥娘都看不见）。
         // 现在只有首帧真的 ready 才清背景；2 秒还没 ready 就把块亮回来当"看得见的故障态"。
@@ -208,7 +219,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) s = weakSelf;
             if (!s || !s->_box) return;
-            BOOL ready = [[DSHPetPlayer shared] isReady];
+            BOOL ready = s->_firstFrameSeen || [[DSHPetPlayer shared] isReady];
+            if (s->_firstFrameSeen) ready = YES;
             DSHPetLog(@"render", ready ? @"box-hide" : @"box-keep", ready ? @"debug" : @"warn",
                       @{ @"size": NSStringFromCGSize(s->_box.bounds.size),
                          @"center": NSStringFromCGPoint(s->_box.center),
@@ -489,6 +501,14 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         [s relayoutAndSettle:YES];
         [s setLayerVisible:YES];
     });
+}
+
+- (void)hideBoxChrome {
+    if (!_box) return;
+    _box.backgroundColor = [UIColor clearColor];
+    _box.layer.cornerRadius = 0.0;
+    _box.layer.borderWidth = 0.0;
+    _box.layer.borderColor = [UIColor clearColor].CGColor;
 }
 
 - (void)setLayerVisible:(BOOL)visible {
