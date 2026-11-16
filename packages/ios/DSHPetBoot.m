@@ -58,6 +58,11 @@ void DSHPetLog(NSString *mod, NSString *evt, NSString *lvl, NSDictionary *kv) {
     @autoreleasepool {
         NSFileManager *fm = [NSFileManager defaultManager];
         [fm createDirectoryAtPath:DSHPetLogDir() withIntermediateDirectories:YES attributes:nil error:NULL];
+    // 没有 postinst 了（roothide 的 dpkg 有时执行不了维护脚本），目录由代码自己建
+    for (NSString *d in @[ @"/var/mobile/Library/DSHPet/config",
+                           @"/var/mobile/Library/DSHPet/assets" ]) {
+        [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:NULL];
+    }
 
         NSMutableDictionary *rec = [NSMutableDictionary dictionary];
         NSISO8601DateFormatter *df = [[NSISO8601DateFormatter alloc] init];
