@@ -152,6 +152,25 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     return YES;
 }
 
+- (nullable UIImage *)posterImage {
+    if (!_currentURL) return nil;
+    AVAsset *asset = [AVURLAsset URLAssetWithURL:_currentURL options:nil];
+    AVAssetImageGenerator *gen = [[AVAssetImageGenerator alloc] initWithAsset:asset];
+    gen.appliesPreferredTrackTransform = YES;
+    gen.requestedTimeToleranceBefore = kCMTimeZero;
+    gen.requestedTimeToleranceAfter = kCMTimeZero;
+    NSError *err = nil;
+    CGImageRef img = [gen copyCGImageAtTime:CMTimeMakeWithSeconds(0.5, 600) actualTime:NULL error:&err];
+    if (!img) {
+        DSHPetLog(@"render", @"poster-failed", @"error", @{ @"err": err.localizedDescription ?: @"nil" });
+        return nil;
+    }
+    UIImage *out = [UIImage imageWithCGImage:img scale:[UIScreen mainScreen].scale orientation:UIImageOrientationUp];
+    CGImageRelease(img);
+    DSHPetLog(@"render", @"poster-ok", @"info", @{ @"w": @(out.size.width), @"h": @(out.size.height) });
+    return out;
+}
+
 - (BOOL)isReady {
     AVPlayerItem *item = _player.currentItem;
     return item != nil && item.status == AVPlayerItemStatusReadyToPlay;

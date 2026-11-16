@@ -30,6 +30,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// 这种情况浮层必须把占位块亮回来，否则桌面上什么都看不到。
 @property (nonatomic, readonly) BOOL isReady;
 
+/// 取当前素材的第一帧（带 alpha 的静帧）。
+/// 用途：ProRes/HEVC 的透明通道在播放链路上失效时，至少还能把宠物"照片"贴在桌上，
+/// 而不是留一个方块 —— 同时把"能解码但放不动"这个事实写进日志。
+- (nullable UIImage *)posterImage;
+
 /// 当前素材的原始像素尺寸（无素材时返回 CGSizeZero）。
 /// 宿主尺寸要按这个比例算，写死 2160x1215 会让不同素材出现大片透明边。
 @property (nonatomic, readonly) CGSize naturalSize;

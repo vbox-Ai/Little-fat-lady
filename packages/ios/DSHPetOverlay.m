@@ -197,8 +197,23 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
                 s->_box.layer.cornerRadius = 0.0;
                 s->_box.layer.borderWidth = 0.0;
             } else {
-                s->_box.backgroundColor = [UIColor colorWithRed:0.85 green:0.25 blue:0.35 alpha:0.85];
-                s->_box.accessibilityLabel = @"小肥娘（素材没解码成功，先显示故障色）";
+                UIImage *poster = [[DSHPetPlayer shared] posterImage];
+                if (poster) {
+                    // 视频放不动，但静帧能解 → 先把小肥娘"贴"在桌上，至少看得见
+                    UIImageView *iv = [[UIImageView alloc] initWithImage:poster];
+                    iv.frame = s->_box.bounds;
+                    iv.contentMode = UIViewContentModeScaleAspectFit;
+                    iv.userInteractionEnabled = NO;
+                    iv.tag = 0x5E7;
+                    [s->_box addSubview:iv];
+                    s->_box.backgroundColor = [UIColor clearColor];
+                    s->_box.layer.cornerRadius = 0.0;
+                    s->_box.layer.borderWidth = 0.0;
+                    s->_box.accessibilityLabel = @"小肥娘（静帧，视频解码失败）";
+                } else {
+                    s->_box.backgroundColor = [UIColor colorWithRed:0.85 green:0.25 blue:0.35 alpha:0.85];
+                    s->_box.accessibilityLabel = @"小肥娘（素材没解码成功，先显示故障色）";
+                }
             }
         });
     } else {
