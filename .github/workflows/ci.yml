@@ -49,8 +49,7 @@ jobs:
             # 不能 --depth 1：ldid 的 Makefile 要 `git describe` 取版本号
             git clone https://github.com/ProcursusTeam/ldid.git "$RUNNER_TEMP/ldid"
             make -C "$RUNNER_TEMP/ldid" -j"$(nproc)"
-            sudo cp "$RUNNER_TEMP/ldid/ldid" /usr/local/bin/ldid
-            chmod +x /usr/local/bin/ldid
+            sudo install -m 0755 "$RUNNER_TEMP/ldid/ldid" /usr/local/bin/ldid
           fi
           echo "ldid: $(command -v ldid || echo MISSING)"
           echo "dpkg-deb: $(command -v dpkg-deb || echo MISSING)"
