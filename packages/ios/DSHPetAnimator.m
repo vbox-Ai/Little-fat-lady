@@ -117,7 +117,7 @@ static NSString *const kCatOther = @"other";
             NSArray<NSString *> *inner = [fm contentsOfDirectoryAtPath:full error:NULL] ?: @[];
             for (NSString *m in [inner sortedArrayUsingSelector:@selector(compare:)]) {
                 NSString *low = m.lowercaseString;
-                if (!([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"])) continue;
+                if (!([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"] || [low hasSuffix:@".webp"])) continue;
                 NSString *cat = n.lowercaseString;
                 NSMutableArray<NSString *> *bucket = self.groups[cat];
                 if (!bucket) { bucket = [NSMutableArray array]; self.groups[cat] = bucket; }
@@ -126,7 +126,7 @@ static NSString *const kCatOther = @"other";
             continue;
         }
         NSString *low = n.lowercaseString;
-        if (!([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"])) continue;
+        if (!([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"] || [low hasSuffix:@".webp"])) continue;
         NSString *cat = [self categoryForFile:n];
         NSMutableArray<NSString *> *bucket = self.groups[cat];
         if (!bucket) { bucket = [NSMutableArray array]; self.groups[cat] = bucket; }

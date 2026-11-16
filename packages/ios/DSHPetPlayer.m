@@ -6,6 +6,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreImage/CoreImage.h>
 #import <QuartzCore/QuartzCore.h>
+#import <ImageIO/ImageIO.h>
 
 static NSString *const kPetAssetDir = @"/var/mobile/Library/DSHPet/assets";
 static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Support/DSHPet";
@@ -18,6 +19,11 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     CIContext *_ci;
     BOOL _compositeReady;
     CGSize _naturalSize;
+    CGImageSourceRef _webpSrc;
+    NSInteger _webpCount;
+    NSInteger _webpIndex;
+    CFTimeInterval _webpNext;
+    NSTimeInterval _webpDur;
 }
 @property (nonatomic, strong) UIView *host;
 @property (nonatomic, strong) CALayer *contentLayer;
@@ -202,6 +208,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 }
 
 - (void)onTick:(CADisplayLink *)link {
+    if (_webpSrc) { [self advanceWebP:link.timestamp force:NO]; return; }
     if (!_colorOut) return;
     AVPlayerItem *cItem = _player.currentItem;
     AVPlayerItem *mItem = _matteOut ? _mattePlayer.currentItem : nil;
@@ -289,6 +296,9 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 }
 
 - (BOOL)playClipAtURL:(NSURL *)url matteURL:(nullable NSURL *)matteURL {
+    if ([[[url pathExtension] lowercaseString] isEqualToString:@"webp"]) {
+        return [self playWebPAtURL:url];
+    }
     if (!url) return NO;
     if (_currentURL && [_currentURL.path isEqualToString:url.path] &&
         _matteURL && [_matteURL.path isEqualToString:matteURL.path] && _link) {
@@ -515,6 +525,79 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         [_player play];
         DSHPetLog(@"render", @"watchdog-resume", @"debug", @{ @"clip": _currentURL.lastPathComponent ?: @"" });
     }
+}
+
+
+#pragma mark - 动画 WebP（真 alpha，不依赖 AVPlayer / 不依赖蒙版合成）
+
+- (void)stopWebP {
+    if (_webpSrc) { CFRelease(_webpSrc); _webpSrc = NULL; }
+    _webpCount = 0; _webpIndex = -1; _webpNext = 0;
+}
+
+- (void)advanceWebP:(CFTimeInterval)now force:(BOOL)force {
+    if (!_webpSrc || _webpCount <= 0) return;
+    if (!force && now < _webpNext) return;
+    NSInteger next = (_webpIndex + 1) % _webpCount;
+    CGImageRef img = CGImageSourceCreateImageAtIndex(_webpSrc, (size_t)next, NULL);
+    if (!img) return;
+    _webpIndex = next;
+    _webpNext = now + (_webpDur > 0.01 ? _webpDur : (1.0 / 12.0));
+    if (_naturalSize.width < 1) {
+        _naturalSize = CGSizeMake(CGImageGetWidth(img), CGImageGetHeight(img));
+    }
+    self.contentLayer.contents = (__bridge id)img;
+    CGImageRelease(img);
+    _compositeReady = YES;
+}
+
+- (BOOL)playWebPAtURL:(NSURL *)url {
+    [self stopComposite];
+    [self stopWebP];
+    CGImageSourceRef src = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
+    if (!src) {
+        DSHPetLog(@"player", @"webp-open-failed", @"error", @{ @"file": url.lastPathComponent ?: @"" });
+        return NO;
+    }
+    size_t n = CGImageSourceGetCount(src);
+    if (n == 0) { CFRelease(src); return NO; }
+    _webpSrc = src;
+    _webpCount = (NSInteger)n;
+    _webpIndex = -1;
+    _webpDur = 1.0 / 12.0;
+    CFDictionaryRef props = CGImageSourceCopyPropertiesAtIndex(src, 0, NULL);
+    if (props) {
+        NSDictionary *d = CFBridgingRelease(props);
+        NSDictionary *wp = d[(NSString *)kCGImagePropertyWebPDictionary];
+        NSNumber *delay = wp[(NSString *)kCGImagePropertyWebPDelayTime];
+        if (!delay) {
+            NSDictionary *gif = d[(NSString *)kCGImagePropertyGIFDictionary];
+            delay = gif[(NSString *)kCGImagePropertyGIFDelayTime];
+        }
+        if (delay && delay.doubleValue > 0.01) _webpDur = delay.doubleValue;
+    }
+    if (!self.contentLayer) {
+        self.contentLayer = [CALayer layer];
+        self.contentLayer.opaque = NO;
+        self.contentLayer.backgroundColor = [UIColor clearColor].CGColor;
+        self.contentLayer.contentsGravity = kCAGravityResizeAspect;
+        self.contentLayer.allowsGroupOpacity = NO;
+        self.contentLayer.shouldRasterize = NO;
+        self.contentLayer.contentsScale = [UIScreen mainScreen].scale;
+    }
+    if (self.host && self.contentLayer.superlayer != self.host.layer) {
+        [self.contentLayer removeFromSuperlayer];
+        [self.host.layer addSublayer:self.contentLayer];
+    }
+    [self syncLayerFrame];
+    [self advanceWebP:CACurrentMediaTime() force:YES];
+    if (!_link) {
+        _link = [CADisplayLink displayLinkWithTarget:self selector:@selector(onTick:)];
+        [_link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    }
+    DSHPetLog(@"player", @"webp-ok", @"info", @{ @"file": url.lastPathComponent ?: @"",
+        @"frames": @(_webpCount), @"dur": @(_webpDur) });
+    return YES;
 }
 
 @end

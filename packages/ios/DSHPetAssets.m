@@ -12,12 +12,12 @@ static BOOL DSHPetHasMovie(NSString *dir) {
             NSArray<NSString *> *inner = [fm contentsOfDirectoryAtPath:full error:NULL] ?: @[];
             for (NSString *x in inner) {
                 NSString *low = x.lowercaseString;
-                if ([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"]) return YES;
+                if ([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"] || [low hasSuffix:@".webp"]) return YES;
             }
             continue;
         }
         NSString *low = n.lowercaseString;
-        if ([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"]) return YES;
+        if ([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"] || [low hasSuffix:@".webp"]) return YES;
     }
     return NO;
 }
@@ -75,7 +75,7 @@ static BOOL DSHPetDirHasMovies(NSString *dir) {
     NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:dir error:NULL] ?: @[];
     for (NSString *n in names) {
         NSString *low = n.lowercaseString;
-        if ([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"]) return YES;
+        if ([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"] || [low hasSuffix:@".webp"]) return YES;
         BOOL isDir = NO;
         NSString *full = [dir stringByAppendingPathComponent:n];
         if ([fm fileExistsAtPath:full isDirectory:&isDir] && isDir) {
