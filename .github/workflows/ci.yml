@@ -29,15 +29,27 @@ jobs:
   build:
     name: 构建 deb（rootless · arm64+arm64e）
     needs: selfcheck
-    runs-on: macos-15
+    # macOS runner 会排队到 15 分钟被 cancel（2026-11-16 起连续三次空转），
+    # 而 Theos 在 Linux 上一样能编，免费额度还是 10 倍，所以整条构建挪到 ubuntu。
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 装工具链（Theos + ldid + dpkg）
+      - name: 装工具链（Theos + ldid + dpkg，Linux 版）
         run: |
-          brew install ldid dpkg || true
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq make clang lld dpkg fakeroot \
+            libplist++-dev libssl-dev zlib1g-dev libncurses-dev git curl unzip zip
+          # ldid：Theos 签名必需，Ubuntu 源里没有，源码编一个
+          if ! command -v ldid >/dev/null; then
+            git clone --depth 1 https://github.com/ProcursusTeam/ldid.git "$RUNNER_TEMP/ldid"
+            make -C "$RUNNER_TEMP/ldid" -j"$(nproc)"
+            sudo cp "$RUNNER_TEMP/ldid/ldid" /usr/local/bin/ldid
+            chmod +x /usr/local/bin/ldid
+          fi
           echo "ldid: $(command -v ldid || echo MISSING)"
           echo "dpkg-deb: $(command -v dpkg-deb || echo MISSING)"
           export THEOS="$RUNNER_TEMP/theos"
@@ -79,7 +91,8 @@ jobs:
           mkdir -p unpack && dpkg-deb -R "$deb" unpack
           lib=$(find unpack -name 'DSHPet.dylib' | head -1)
           echo "lib = $lib"
-          lipo -info "$lib" | tee /tmp/lipo.txt
+          # Linux 上没有 lipo，用 file 看 fat 头（universal binary 会列出每个切片）
+          file "$lib" | tee /tmp/lipo.txt
           grep -q arm64e /tmp/lipo.txt || { echo "::error::缺 arm64e 切片"; exit 1; }
           echo "--- control ---"
           dpkg-deb -I "$deb"
