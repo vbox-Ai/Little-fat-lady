@@ -88,3 +88,6 @@
 - 移除 `AVPlayerLayer` 后必须复核 `syncLayerFrame` 之类"以 _layer 存在为前提"的早退，否则 `_contentLayer` 永远零尺寸，画面全空。
 - 亮度键用单次 `CIColorMatrix`（RGB=1、A=luma）+ `CIBlendWithMask`；`CIMaximumCompositing` 叠三通道会把 alpha 叠成 0。
 - 会话信息气泡：数据来自 `/state` 的 `sections.notify.data.event.data.text`（`turn/end`），counter 变了才算新消息；方案定在 S6a 气泡层 / S6b 接长轮询 / S10 扩来源，详见 PLAN §21。
+- WebP 动画必须预解码：`CGImageSourceCreateImageAtIndex` 是懒解码，直接塞 `layer.contents` 会让 CoreAnimation 先用低清代理顶上 → 真机"糊一下又清楚"；用 `kCGImageSourceShouldCacheImmediately` 一次解成 CGImage 列表。
+- 占位色块不能靠定时器撤：播放器画出首帧就发 `DSHPetFirstFrame`，浮层收到立刻撤底色，否则注销后会先看到 1~3 秒蓝/绿方块。
+- 素材分辨率要配显示尺寸：包内 300px 宽，桌面默认 118pt（@3x ≈ 354px），等于放大 18%；再模糊就重出 420px 宽素材包。
