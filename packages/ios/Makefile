@@ -4,6 +4,10 @@ export THEOS_PACKAGE_SCHEME = rootless
 
 # 版本号由 scripts/build-deb.sh 生成 DSHPetVersion.h（VERSION-BUILD），这里不重复定义。
 export TWEAK_NAME = DSHPet
+# Linux 上用系统 clang 编时，SDK 的 AVFoundation 伞头有个 submodule 声明缺失，
+# 会触发 -Werror,-Wincomplete-umbrella；这里只关这一条。
+export DSHPet_CFLAGS = -Wno-incomplete-umbrella
+
 export DSHPet_FILES = Tweak.xm DSHPetBoot.m DSHPetOverlay.m DSHPetAnimator.m DSHPetPlayer.m DSHPetAssets.m
 export DSHPet_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 export DSHPet_FRAMEWORKS = UIKit QuartzCore AVFoundation
