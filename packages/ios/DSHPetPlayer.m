@@ -226,50 +226,36 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     if (!_ci) _ci = [CIContext contextWithOptions:@{ kCIContextUseSoftwareRenderer: @NO }];
 
     CIImage *color = [CIImage imageWithCVPixelBuffer:cb];
-    CIImage *mask = nil;
+
+    // 关键：CIBlendWithMask 按蒙版的**亮度**做遮罩，不是按 alpha。
+    // 之前把值塞进 alpha、RGB 清零（inputAVector=(1,0,0,0)），亮度恒为 0
+    // → 整只小肥娘永远全透明，真机就是"太透明/忽隐忽现/看不见"。
+    // 正确做法：先得到灰度图，再用 CIMaskToAlpha 把灰度变成"白底 + alpha"，
+    // 最后用 CISourceInCompositing 按 alpha 取色。
+    CIImage *gray = nil;
     if (mb) {
-        // 独立蒙版：把蒙版的 R（灰度）搬到输出的 alpha。
-        // CIColorMatrix 的 "input?Vector" 是「输入各通道对输出该通道的系数」，
-        // 要输出 A = R_in，必须写成 inputAVector=(1,0,0,0)。
-        // 早先写成 inputRVector=(0,0,0,1) / inputAVector=(0,0,0,0)，
-        // 等于 alpha 恒为 0 —— 真机表现就是"小肥娘几乎全透明、忽隐忽现"。
-        CIImage *matte = [CIImage imageWithCVPixelBuffer:mb];
-        mask = [matte imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
-            @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputAVector": [CIVector vectorWithX:1 Y:0 Z:0 W:0],
-            @"inputBiasVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-        }];
+        // 独立蒙版：蒙版本身就是灰度
+        gray = [CIImage imageWithCVPixelBuffer:mb];
     } else {
-        // 没有独立蒙版：把彩色画面自己当键源。
-        // 做一张"白色 + alpha=亮度"的蒙版：
-        //   RGB 全 1（纯白，避免边缘染色），A = 0.299R + 0.587G + 0.114B。
-        // 黑底素材上，背景亮度≈0 → alpha≈0（全透明），角色像素亮度高 → alpha 高（不透明）。
-        // 早先版本用 CIMaximumCompositing 叠三路通道，叠完 alpha 可能整体为 0，
-        // 表现就是"方块消失后什么都没有"。
-        mask = [color imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
-            @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputAVector": [CIVector vectorWithX:0.299 Y:0.587 Z:0.114 W:0],
-            @"inputBiasVector": [CIVector vectorWithX:1 Y:1 Z:1 W:0],
+        // 没有蒙版：拿彩色画面的亮度当键源（黑底素材可用）
+        gray = [color imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
+            @"inputRVector": [CIVector vectorWithX:0.299 Y:0.587 Z:0.114 W:0],
+            @"inputGVector": [CIVector vectorWithX:0.299 Y:0.587 Z:0.114 W:0],
+            @"inputBVector": [CIVector vectorWithX:0.299 Y:0.587 Z:0.114 W:0],
+            @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
         }];
     }
-    // 蒙版锐化：视频编码后的灰边会让角色整体半透明，
-    // 用对比度+轻微压暗把中间调推向 0/1，视觉上才是"实心的小肥娘"。
-    mask = [mask imageByApplyingFilter:@"CIColorControls" withInputParameters:@{
-        @"inputContrast": @2.2,
-        @"inputBrightness": @(-0.18),
+    // 视频编码的灰边会让角色整体半透明：加对比、轻微压暗，把中间调推向 0/1
+    gray = [gray imageByApplyingFilter:@"CIColorControls" withInputParameters:@{
+        @"inputContrast": @2.4,
+        @"inputBrightness": @(-0.22),
         @"inputSaturation": @0,
     }];
+    CIImage *mask = [gray imageByApplyingFilter:@"CIMaskToAlpha" withInputParameters:@{}];
 
-    CIImage *clear = [[CIImage imageWithColor:[CIColor colorWithRed:0 green:0 blue:0 alpha:0]]
-                      imageByCroppingToRect:color.extent];
-    CIImage *out = [[CIFilter filterWithName:@"CIBlendWithMask" keysAndValues:
+    CIImage *out = [[CIFilter filterWithName:@"CISourceInCompositing" keysAndValues:
                      kCIInputImageKey, color,
-                     kCIInputBackgroundImageKey, clear,
-                     kCIInputMaskImageKey, mask, nil] outputImage];
+                     kCIInputBackgroundImageKey, mask, nil] outputImage];
 
     // 首帧把蒙版平均 alpha 记下来：接近 0 说明蒙版方向错，接近 1 说明蒙版全白，
     // 正常角色素材一般在 0.15~0.5。
