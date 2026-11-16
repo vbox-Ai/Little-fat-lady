@@ -1,4 +1,5 @@
 #import "DSHPetPlayer.h"
+#import <math.h>
 #import "DSHPetAssets.h"
 #import <AVFoundation/AVAudioSession.h>
 #import "DSHPetBoot.h"
@@ -169,7 +170,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
                   @{ @"status": @(cur.status),
                      @"url": cur.asset ? @"yes" : @"no",
                      @"err": cur.error.localizedDescription ?: @"none",
-                     @"dur": @(CMTimeGetSeconds(cur.duration)) });
+                     @"dur": (CFTimeInterval)isfinite(CMTimeGetSeconds(cur.duration)) ? @(CMTimeGetSeconds(cur.duration)) : @(-1) });
     });
 }
 
