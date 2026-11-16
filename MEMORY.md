@@ -11,6 +11,9 @@
 - 本机没有 git、没有 python 在 PATH：git 用 GitHub API 推送，python 用 `C:\Users\Admin\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe`。
 
 ## 项目约定
+- 多候选根扫描必须真的逐根扫：`buildIndexFromDir:` 里拼子路径要用参数 `scanDir`，用 `self.dir` 会让所有根都退化成第一个根（0.1.0-65 的真因）。
+- 「玫红方块」= 首帧 2 秒未 ready 的告警色，等价于"素材索引空/路径错"，不是渲染管线问题，先查 `anim.jsonl` 的 `index` 行。
+
 
 - 阶段闸门四件（自检 → 记忆点 → 全量推送 → 回报）写进方案 §20 与本仓 `AGENTS.md`，操作员指定为硬性条件。
 - 我不会用终端 → 所有真机步骤必须给图形界面或浏览器 URL。
