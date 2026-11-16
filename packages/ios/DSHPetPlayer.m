@@ -22,7 +22,6 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 @property (nonatomic, strong) UIView *host;
 @property (nonatomic, strong) CALayer *contentLayer;
 @property (nonatomic, strong) NSURL *matteURL;
-- (void)playClipAtURL:(NSURL *)url matteURL:(nullable NSURL *)matteURL;
 - (void)startCompositeWithColorURL:(NSURL *)curl matteURL:(NSURL *)murl;
 - (void)stopComposite;
 - (void)onTick:(CADisplayLink *)link;
