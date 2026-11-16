@@ -178,7 +178,15 @@ static NSString *const kCatOther = @"other";
     }
 }
 
+- (void)onAssetsCopied:(NSNotification *)note {
+    // 素材是异步从包里拷到 /var/mobile 的，拷完重建索引再开播，避免一直停在占位块
+    [self buildIndex];
+    NSString *clip = [self pickFrom:kCatIdle] ?: [self pickFrom:kCatOther];
+    if (clip) [self play:clip];
+}
+
 - (void)stop {
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:@"DSHPetAssetsCopied" object:nil];
     [self.idleTimer invalidate];
     self.idleTimer = nil;
     self.currentClip = nil;

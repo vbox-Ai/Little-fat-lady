@@ -1,4 +1,5 @@
 #import "DSHPetAssets.h"
+#import "DSHPetBoot.h"
 
 static BOOL DSHPetHasMovie(NSString *dir) {
     NSFileManager *fm = [NSFileManager defaultManager];
@@ -63,4 +64,64 @@ NSString *_Nullable DSHPetFirstAssetRoot(void) {
         if (DSHPetHasMovie(r)) return r;
     }
     return nil;
+}
+
+#pragma mark - 自拷贝（不依赖 dpkg 维护脚本）
+
+static NSString * const kRunAssets = @"/var/mobile/Library/DSHPet/assets";
+
+static BOOL DSHPetDirHasMovies(NSString *dir) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:dir error:NULL] ?: @[];
+    for (NSString *n in names) {
+        NSString *low = n.lowercaseString;
+        if ([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"]) return YES;
+        BOOL isDir = NO;
+        NSString *full = [dir stringByAppendingPathComponent:n];
+        if ([fm fileExistsAtPath:full isDirectory:&isDir] && isDir) {
+            if (DSHPetDirHasMovies(full)) return YES;
+        }
+    }
+    return NO;
+}
+
+void DSHPetEnsureAssets(void) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    // 目标目录里已经有素材（color/ 或平铺片）就不动，避免覆盖用户自己放的素材
+    if ([fm fileExistsAtPath:[kRunAssets stringByAppendingPathComponent:@"color"]]) return;
+    if (DSHPetDirHasMovies(kRunAssets)) return;
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSFileManager *fm2 = [NSFileManager defaultManager];
+        NSMutableDictionary<NSString *, NSNumber *> *report = [NSMutableDictionary dictionary];
+        BOOL done = NO;
+        for (NSString *root in DSHPetAssetRoots()) {
+            if (done) break;
+            if (![fm2 fileExistsAtPath:root]) continue;
+            NSArray<NSString *> *names = [fm2 contentsOfDirectoryAtPath:root error:NULL] ?: @[];
+            for (NSString *n in names) {
+                NSString *src = [root stringByAppendingPathComponent:n];
+                BOOL isDir = NO;
+                if (!([fm2 fileExistsAtPath:src isDirectory:&isDir] && isDir)) continue;
+                if (!DSHPetDirHasMovies(src)) continue;
+                NSString *dst = [kRunAssets stringByAppendingPathComponent:n];
+                [fm2 removeItemAtPath:dst error:NULL];
+                NSError *err = nil;
+                if ([fm2 copyItemAtPath:src toPath:dst error:&err]) {
+                    report[n] = @(1);
+                    done = YES;
+                } else {
+                    report[n] = @(-1);
+                    DSHPetLog(@"assets", @"copy-fail", @"warn", @{ @"src": src, @"err": err.localizedDescription ?: @"?" });
+                }
+            }
+        }
+        DSHPetLog(@"assets", done ? @"copy-ok" : @"copy-none", done ? @"info" : @"warn",
+                  @{ @"dst": kRunAssets, @"detail": report });
+        if (done) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"DSHPetAssetsCopied" object:nil];
+            });
+        }
+    });
 }

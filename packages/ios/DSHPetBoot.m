@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import "DSHPetBoot.h"
+#import "DSHPetAssets.h"
 #import <math.h>
 
 // 日志层（方案 §8）：JSONL，一行一条，按 mod 分文件。
@@ -62,6 +63,10 @@ void DSHPetLog(NSString *mod, NSString *evt, NSString *lvl, NSDictionary *kv) {
     for (NSString *d in @[ @"/var/mobile/Library/DSHPet/config",
                            @"/var/mobile/Library/DSHPet/assets" ]) {
         [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:NULL];
+    }
+    {
+        static BOOL ensured = NO;
+        if (!ensured) { ensured = YES; DSHPetEnsureAssets(); }
     }
     // 旧版本留下的 5 段占位演示片，会在真素材之外插一脚（"有时冒出蓝水母"）；
     // 只删这几个固定名字，用户自己放的 main.* 不动。
