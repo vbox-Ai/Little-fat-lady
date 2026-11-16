@@ -126,45 +126,10 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 }
 
 - (BOOL)playClipAtURL:(NSURL *)url {
+    // 一律走合成：有蒙版就用蒙版，没有就用亮度键把黑底抠掉。
+    // 早期版本这里直接挂 AVPlayerLayer，黑底素材会把黑块一起画上桌面。
     if (!url) return NO;
-    if (_currentURL && [_currentURL.path isEqualToString:url.path] && _player) {
-        [self play];
-        return YES;
-    }
-    _currentURL = url;
-
-    AVAsset *asset = [AVURLAsset URLAssetWithURL:url options:nil];
-    AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:asset];
-    if (!_player) {
-        _player = [AVPlayer playerWithPlayerItem:item];
-        _player.muted = YES;
-        _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
-        _player.allowsExternalPlayback = NO;
-    } else {
-        [_player replaceCurrentItemWithPlayerItem:item];
-    }
-
-    if (!_layer) {
-        _layer = [AVPlayerLayer playerLayerWithPlayer:_player];
-        _layer.videoGravity = AVLayerVideoGravityResizeAspect;
-        _layer.backgroundColor = [UIColor clearColor].CGColor;
-        _layer.opaque = NO;
-    }
-    if (_layer.superlayer == nil && _host) {
-        [_host.layer addSublayer:_layer];
-    }
-
-    [self observeEnd];
-    [self watchItemStatus:item];
-    [self syncLayerFrame];
-
-    DSHPetLog(@"render", @"player-load", @"info", @{
-        @"file": url.lastPathComponent ?: @"",
-        @"bytes": @([[NSFileManager defaultManager] attributesOfItemAtPath:url.path error:NULL].fileSize),
-        @"tracks": @(asset.tracks.count),
-    });
-    [self play];
-    return YES;
+    return [self playClipAtURL:url matteURL:nil];
 }
 
 - (void)startCompositeWithColorURL:(NSURL *)curl matteURL:(NSURL *)murl {

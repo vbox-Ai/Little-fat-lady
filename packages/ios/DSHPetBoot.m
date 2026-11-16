@@ -65,6 +65,17 @@ void DSHPetLog(NSString *mod, NSString *evt, NSString *lvl, NSDictionary *kv) {
     }
     // 旧版本留下的 5 段占位演示片，会在真素材之外插一脚（"有时冒出蓝水母"）；
     // 只删这几个固定名字，用户自己放的 main.* 不动。
+    // 旧包（单路 ProRes，无 alpha）整个清掉：留着会被索引器当成候选根，
+    // 抽到就播成一块黑底。只保留 color/ matte/ 与用户自己的 main.*。
+    {
+        NSString *aroot = @"/var/mobile/Library/DSHPet/assets";
+        NSArray<NSString *> *kids = [fm contentsOfDirectoryAtPath:aroot error:NULL] ?: @[];
+        for (NSString *k in kids) {
+            if ([k isEqualToString:@"color"] || [k isEqualToString:@"matte"]) continue;
+            if ([k.lowercaseString hasPrefix:@"main."]) continue;
+            [fm removeItemAtPath:[aroot stringByAppendingPathComponent:k] error:NULL];
+        }
+    }
     for (NSString *n in @[ @"idle.mov", @"turn.mov", @"click.mov", @"drag.mov", @"sleep.mov", @"demo.mov" ]) {
         NSString *q = [@"/var/mobile/Library/DSHPet/assets" stringByAppendingPathComponent:n];
         if ([fm fileExistsAtPath:q]) { [fm removeItemAtPath:q error:NULL]; }

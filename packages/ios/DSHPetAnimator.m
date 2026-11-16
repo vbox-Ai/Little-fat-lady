@@ -74,7 +74,11 @@ static NSString *const kCatOther = @"other";
         NSUInteger n = 0;
         for (NSString *k in self.groups) n += self.groups[k].count;
         perRoot[scanDir] = [self.groups copy] ?: @{};
-        if (n > bestCount) { bestCount = n; bestDir = scanDir; }
+        // 带 color/ 的根是"彩色+蒙版"新素材，优先级压过旧的单路 .mov 包：
+        // 旧包没 alpha，播上去就是一块黑底。
+        BOOL isColorRoot = [[scanDir lastPathComponent] isEqualToString:@"color"];
+        NSUInteger score = n + (isColorRoot ? 100000 : 0);
+        if (score > bestCount) { bestCount = score; bestDir = scanDir; }
     }
     [self.groups removeAllObjects];
     if (bestDir) {
