@@ -237,28 +237,19 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
             @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
         }];
     } else {
-        // 没有蒙版：拿彩色画面自己的最大通道当 alpha（黑底素材的亮度键）
-        CIImage *r = [color imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
-            @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
-            @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputBiasVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-        }];
-        CIImage *g = [color imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
-            @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
-            @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-        }];
-        CIImage *b = [color imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
+        // 没有独立蒙版：把彩色画面自己当键源。
+        // 做一张"白色 + alpha=亮度"的蒙版：
+        //   RGB 全 1（纯白，避免边缘染色），A = 0.299R + 0.587G + 0.114B。
+        // 黑底素材上，背景亮度≈0 → alpha≈0（全透明），角色像素亮度高 → alpha 高（不透明）。
+        // 早先版本用 CIMaximumCompositing 叠三路通道，叠完 alpha 可能整体为 0，
+        // 表现就是"方块消失后什么都没有"。
+        mask = [color imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
             @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
             @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
-            @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputAVector": [CIVector vectorWithX:0.299 Y:0.587 Z:0.114 W:0],
+            @"inputBiasVector": [CIVector vectorWithX:1 Y:1 Z:1 W:0],
         }];
-        mask = [r imageByApplyingFilter:@"CIMaximumCompositing" withInputParameters:@{ kCIInputBackgroundImageKey: g }];
-        mask = [mask imageByApplyingFilter:@"CIMaximumCompositing" withInputParameters:@{ kCIInputBackgroundImageKey: b }];
     }
     CIImage *clear = [[CIImage imageWithColor:[CIColor colorWithRed:0 green:0 blue:0 alpha:0]]
                       imageByCroppingToRect:color.extent];
@@ -415,12 +406,18 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 }
 
 - (void)syncLayerFrame {
-    if (!_layer) return;
+    // 注意：不能因为 _layer 为 nil 就直接 return。
+    // 0.1.0-70 起所有素材都走合成，_layer 根本不会被创建，
+    // 早退会让 _contentLayer.frame 一直是零尺寸 —— 方块藏起来后桌面上什么都没有。
+    if (!_layer && !_contentLayer) return;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     CGRect b = self.host ? self.host.bounds : CGRectMake(0, 0, _displaySize.width, _displaySize.height);
-    _layer.frame = b;
-    _contentLayer.frame = b;
+    if (b.size.width < 1.0 || b.size.height < 1.0) {
+        b = CGRectMake(0, 0, _displaySize.width, _displaySize.height);
+    }
+    if (_layer) _layer.frame = b;
+    if (_contentLayer) _contentLayer.frame = b;
     [CATransaction commit];
 }
 
