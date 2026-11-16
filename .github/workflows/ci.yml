@@ -57,6 +57,19 @@ jobs:
           git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
           rm -rf "$THEOS/sdks"
           git clone --depth 1 https://github.com/theos/sdks.git "$THEOS/sdks"
+          # Theos 在 Linux 上默认找 $THEOS/toolchain/linux/iphone/bin/clang（官方 LLVM 包）。
+          # 那个包装下来 400MB+，这里直接把系统 clang/ld.lld/llvm-lipo 链进去，效果一样。
+          sudo apt-get install -y -qq llvm
+          TOOLBIN="$THEOS/toolchain/linux/iphone/bin"
+          mkdir -p "$TOOLBIN"
+          ln -sf "$(command -v clang)" "$TOOLBIN/clang"
+          ln -sf "$(command -v clang++)" "$TOOLBIN/clang++"
+          ln -sf "$(command -v ld.lld)" "$TOOLBIN/ld"
+          ln -sf "$(command -v ld.lld)" "$TOOLBIN/ld64"
+          LIPO=$(ls /usr/bin/llvm-lipo* 2>/dev/null | head -1)
+          [ -n "$LIPO" ] && ln -sf "$LIPO" "$TOOLBIN/lipo"
+          ln -sf "$(command -v ldid)" "$TOOLBIN/ldid"
+          ls "$TOOLBIN"
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
           echo "sdks: $(ls "$THEOS/sdks" | head -5 | tr '\n' ' ')"
 
