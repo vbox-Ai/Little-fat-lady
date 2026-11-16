@@ -88,6 +88,13 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     NSUInteger _orientToken;
     id _firstFrameObs;
     BOOL _firstFrameSeen;
+    // S5 物理
+    CADisplayLink *_physLink;
+    CGPoint _vel;
+    CFTimeInterval _lastPhysT;
+    CGPoint _panLastPoint;
+    CFTimeInterval _panLastT;
+    BOOL _physRunning;
 }
 
 + (instancetype)shared {
@@ -349,15 +356,133 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 }
 
 - (void)onPan:(UIPanGestureRecognizer *)g {
-    if (g.state == UIGestureRecognizerStateBegan) [[DSHPetAnimator shared] handleDragBegin];
-    CGPoint t = [g translationInView:_window];
     if (g.state == UIGestureRecognizerStateBegan) {
+        [[DSHPetAnimator shared] handleDragBegin];
+        [self stopPhysics];
         _panStartCenter = _box.center;
-    } else if (g.state == UIGestureRecognizerStateChanged) {
+        _panLastPoint = [_window convertPoint:[g locationInView:_window] toView:nil];
+        _panLastT = CACurrentMediaTime();
+    }
+
+    CGPoint t = [g translationInView:_window];
+
+    if (g.state == UIGestureRecognizerStateChanged) {
         _box.center = CGPointMake(_panStartCenter.x + t.x, _panStartCenter.y + t.y);
-    } else if (g.state == UIGestureRecognizerStateEnded || g.state == UIGestureRecognizerStateCancelled) {
-        [self clampAndPersist];
+
+        // 用最近一次位移/时间算松手速度（pt/s），比 velocityInView 更贴近手感
+        CFTimeInterval now = CACurrentMediaTime();
+        CGPoint p = [_window convertPoint:[g locationInView:_window] toView:nil];
+        CFTimeInterval dt = now - _panLastT;
+        if (dt > 0.001) {
+            CGPoint d = CGPointMake(p.x - _panLastPoint.x, p.y - _panLastPoint.y);
+            _vel = CGPointMake(d.x / dt, d.y / dt);
+            _panLastPoint = p;
+            _panLastT = now;
+        }
+        return;
+    }
+
+    if (g.state == UIGestureRecognizerStateEnded || g.state == UIGestureRecognizerStateCancelled) {
         [[DSHPetAnimator shared] handleDragEnd];
+        CGPoint v = [g velocityInView:_window];
+        // 手势速度优先；太慢就当放下（不抛）
+        CGFloat speed = hypot(v.x, v.y);
+        if (speed < 250.0) { v = _vel; speed = hypot(v.x, v.y); }
+        if (speed > 2400.0 && speed > 0) { v.x *= 2400.0 / speed; v.y *= 2400.0 / speed; }
+        if (speed > 250.0) {
+            [self startPhysicsWithVelocity:v];
+        } else {
+            [self clampAndPersist];
+        }
+    }
+}
+
+#pragma mark - S5 物理
+
+- (CGFloat)physGravity {
+    NSDictionary *ph = _cfg[@"physics"];
+    CGFloat g = [ph[@"gravity"] doubleValue];
+    return g > 0 ? g : 1400.0;
+}
+
+- (CGFloat)physRestitution {
+    NSDictionary *ph = _cfg[@"physics"];
+    CGFloat r = [ph[@"restitution"] doubleValue];
+    if (r <= 0) r = 0.62;
+    return MIN(MAX(r, 0.1), 0.95);
+}
+
+- (void)startPhysicsWithVelocity:(CGPoint)v {
+    [self stopPhysics];
+    _vel = v;
+    _lastPhysT = CACurrentMediaTime();
+    _physRunning = YES;
+    _physLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(stepPhysics:)];
+    [_physLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    DSHPetLog(@"physics", @"throw", @"debug", @{ @"vx": @(v.x), @"vy": @(v.y) });
+}
+
+- (void)stopPhysics {
+    if (_physLink) { [_physLink invalidate]; _physLink = nil; }
+    _physRunning = NO;
+}
+
+- (void)stepPhysics:(CADisplayLink *)link {
+    if (!_window || !_box) { [self stopPhysics]; return; }
+
+    CFTimeInterval now = CACurrentMediaTime();
+    CGFloat dt = now - _lastPhysT;
+    _lastPhysT = now;
+    if (dt <= 0 || dt > 0.1) dt = 1.0 / 60.0;
+
+    CGSize b = _window.bounds.size;
+    CGSize s = _box.bounds.size;
+    UIEdgeInsets sa = _window.safeAreaInsets;
+    CGFloat left = MAX(20.0, sa.left + 8.0);
+    CGFloat right = MAX(20.0, sa.right + 8.0);
+    CGFloat top = MAX(40.0, sa.top + 8.0);
+    CGFloat bottom = MAX(34.0, sa.bottom + 8.0);
+
+    CGFloat halfW = s.width / 2.0, halfH = s.height / 2.0;
+    CGFloat minX = left + halfW, maxX = b.width - right - halfW;
+    CGFloat minY = top + halfH, maxY = b.height - bottom - halfH;
+    if (minX > maxX) minX = maxX = b.width / 2.0;
+    if (minY > maxY) minY = maxY = b.height / 2.0;
+
+    CGFloat chunk = 1.0 / 120.0;
+    CGFloat remain = dt;
+    while (remain > 0) {
+        CGFloat h = MIN(chunk, remain);
+        remain -= h;
+        _vel.y += [self physGravity] * h;
+        CGPoint c = _box.center;
+        c.x += _vel.x * h;
+        c.y += _vel.y * h;
+
+        CGFloat rest = [self physRestitution];
+
+        if (c.x < minX) { c.x = minX; _vel.x = -_vel.x * rest; }
+        if (c.x > maxX) { c.x = maxX; _vel.x = -_vel.x * rest; }
+        if (c.y < minY) { c.y = minY; _vel.y = -_vel.y * rest; }
+
+        BOOL onFloor = NO;
+        if (c.y > maxY) {
+            c.y = maxY;
+            onFloor = YES;
+            if (_vel.y > 0) _vel.y = -_vel.y * rest;
+            // 地面摩擦
+            CGFloat fr = 1.0 - 2.5 * h;
+            _vel.x *= MAX(fr, 0.0);
+        }
+        _box.center = c;
+
+        if (onFloor && fabs(_vel.y) < 140.0 && fabs(_vel.x) < 12.0) {
+            _vel = CGPointZero;
+            [self stopPhysics];
+            [self clampAndPersist];
+            DSHPetLog(@"physics", @"settle", @"debug", @{ @"x": @(c.x), @"y": @(c.y) });
+            return;
+        }
     }
 }
 

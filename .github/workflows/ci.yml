@@ -90,7 +90,7 @@ jobs:
 
       - name: 拉素材包（上游 0.4.9 · 114 段转码版）
         env:
-          PACK_URL: https://github.com/vbox-Ai/Little-fat-lady/releases/download/pack-upstream-0.4.9-mixed/assets-pack-mixed-0.4.9.zip
+          PACK_URL: https://github.com/vbox-Ai/Little-fat-lady/releases/download/pack-upstream-0.4.9-390/assets-pack-390-0.4.9.zip
         run: |
           set -e
           curl -fL --retry 4 --retry-delay 3 -o "$RUNNER_TEMP/pack.zip" "$PACK_URL"
