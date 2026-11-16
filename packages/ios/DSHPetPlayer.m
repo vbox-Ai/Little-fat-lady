@@ -228,13 +228,18 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     CIImage *color = [CIImage imageWithCVPixelBuffer:cb];
     CIImage *mask = nil;
     if (mb) {
-        // 独立蒙版：灰度搬到 alpha
+        // 独立蒙版：把蒙版的 R（灰度）搬到输出的 alpha。
+        // CIColorMatrix 的 "input?Vector" 是「输入各通道对输出该通道的系数」，
+        // 要输出 A = R_in，必须写成 inputAVector=(1,0,0,0)。
+        // 早先写成 inputRVector=(0,0,0,1) / inputAVector=(0,0,0,0)，
+        // 等于 alpha 恒为 0 —— 真机表现就是"小肥娘几乎全透明、忽隐忽现"。
         CIImage *matte = [CIImage imageWithCVPixelBuffer:mb];
         mask = [matte imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
-            @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
+            @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
             @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
             @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-            @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputAVector": [CIVector vectorWithX:1 Y:0 Z:0 W:0],
+            @"inputBiasVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
         }];
     } else {
         // 没有独立蒙版：把彩色画面自己当键源。
@@ -251,12 +256,36 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
             @"inputBiasVector": [CIVector vectorWithX:1 Y:1 Z:1 W:0],
         }];
     }
+    // 蒙版锐化：视频编码后的灰边会让角色整体半透明，
+    // 用对比度+轻微压暗把中间调推向 0/1，视觉上才是"实心的小肥娘"。
+    mask = [mask imageByApplyingFilter:@"CIColorControls" withInputParameters:@{
+        @"inputContrast": @2.2,
+        @"inputBrightness": @(-0.18),
+        @"inputSaturation": @0,
+    }];
+
     CIImage *clear = [[CIImage imageWithColor:[CIColor colorWithRed:0 green:0 blue:0 alpha:0]]
                       imageByCroppingToRect:color.extent];
     CIImage *out = [[CIFilter filterWithName:@"CIBlendWithMask" keysAndValues:
                      kCIInputImageKey, color,
                      kCIInputBackgroundImageKey, clear,
                      kCIInputMaskImageKey, mask, nil] outputImage];
+
+    // 首帧把蒙版平均 alpha 记下来：接近 0 说明蒙版方向错，接近 1 说明蒙版全白，
+    // 正常角色素材一般在 0.15~0.5。
+    if (!_compositeReady) {
+        CIFilter *avg = [CIFilter filterWithName:@"CIAreaAverage" keysAndValues:
+                         kCIInputImageKey, mask,
+                         @"inputExtent", [CIVector vectorWithCGRect:color.extent], nil];
+        CIImage *avgOut = avg.outputImage;
+        uint8_t px[4] = {0, 0, 0, 0};
+        if (avgOut) {
+            [_ci render:avgOut toBitmap:px rowBytes:4 bounds:CGRectMake(0, 0, 1, 1)
+                  format:kCIFormatRGBA8 colorSpace:NULL];
+        }
+        DSHPetLog(@"render", @"mask-stat", @"debug", @{
+            @"a": @(px[3] / 255.0), @"mode": mb ? @"matte" : @"lumakey" });
+    }
 
     CGImageRef cg = [_ci createCGImage:out fromRect:color.extent];
     if (cg) {
