@@ -63,6 +63,12 @@ void DSHPetLog(NSString *mod, NSString *evt, NSString *lvl, NSDictionary *kv) {
                            @"/var/mobile/Library/DSHPet/assets" ]) {
         [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:NULL];
     }
+    // 旧版本留下的 5 段占位演示片，会在真素材之外插一脚（"有时冒出蓝水母"）；
+    // 只删这几个固定名字，用户自己放的 main.* 不动。
+    for (NSString *n in @[ @"idle.mov", @"turn.mov", @"click.mov", @"drag.mov", @"sleep.mov", @"demo.mov" ]) {
+        NSString *q = [@"/var/mobile/Library/DSHPet/assets" stringByAppendingPathComponent:n];
+        if ([fm fileExistsAtPath:q]) { [fm removeItemAtPath:q error:NULL]; }
+    }
 
         NSMutableDictionary *rec = [NSMutableDictionary dictionary];
         NSISO8601DateFormatter *df = [[NSISO8601DateFormatter alloc] init];
