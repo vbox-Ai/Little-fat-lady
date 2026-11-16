@@ -78,3 +78,8 @@
 - `postinst` 不再重启桌面之后，"装了但看起来没变"绝大多数是**没手动重启 SpringBoard**，旧 dylib 还在跑；发布说明必须把这一步写成第一条。
 - 素材不要靠 `postinst` 拷：roothide 类越狱里维护脚本跑在假根、SpringBoard 看到的是 `/var/jb`，`cp` 会静默失败还被 `|| true` 吞掉。规矩：运行期在多候选根里找素材（`DSHPetAssetRoots()`），命中记日志。
 - 项目里 warning 即 error（`-Werror`）：挪代码后遗留的未用变量（`NSFileManager *fm`）会直接卡住 CI，改完审视一遍新增/删除的局部变量。
+
+## 阶段结论（S4 · 黑底）
+- 单参数 `playClipAtURL:` 必须与双参数版本等价（无蒙版走亮度键），否则旧素材会绕过合成把黑底画上屏。
+- 选素材根时给 `color/` 根加权，别只比 clip 数量；启动时清掉 `assets/` 下旧的单路素材（保留 `color/`、`matte/`、`main.*`）。
+- 判据：`render.jsonl` 里 `composite` 出现 0 次 = 合成没跑，此时看到的黑底必然来自 AVPlayerLayer 单路播放。
