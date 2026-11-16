@@ -355,8 +355,14 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     CGFloat scaleFit = MIN(CGRectGetWidth(box) / imgW, CGRectGetHeight(box) / imgH);
     CGFloat w = imgW * scaleFit;
     CGFloat h = imgH * scaleFit;
-    CGRect rect = CGRectMake(CGRectGetMidX(box) - w / 2.0,
-                             CGRectGetMidY(box) - h / 2.0, w, h);
+
+    // 对齐到整数屏幕像素：落在半像素边界上时 CA 会做一次插值，边缘就发虚。
+    CGFloat scr = [UIScreen mainScreen].scale > 0 ? [UIScreen mainScreen].scale : 3.0;
+    w = round(w * scr) / scr;
+    h = round(h * scr) / scr;
+    CGFloat x = round((CGRectGetMidX(box) - w / 2.0) * scr) / scr;
+    CGFloat y = round((CGRectGetMidY(box) - h / 2.0) * scr) / scr;
+    CGRect rect = CGRectMake(x, y, w, h);
 
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
