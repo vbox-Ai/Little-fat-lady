@@ -83,3 +83,7 @@
 - 单参数 `playClipAtURL:` 必须与双参数版本等价（无蒙版走亮度键），否则旧素材会绕过合成把黑底画上屏。
 - 选素材根时给 `color/` 根加权，别只比 clip 数量；启动时清掉 `assets/` 下旧的单路素材（保留 `color/`、`matte/`、`main.*`）。
 - 判据：`render.jsonl` 里 `composite` 出现 0 次 = 合成没跑，此时看到的黑底必然来自 AVPlayerLayer 单路播放。
+
+## 阶段结论（S4 · 图层尺寸）
+- 移除 `AVPlayerLayer` 后必须复核 `syncLayerFrame` 之类"以 _layer 存在为前提"的早退，否则 `_contentLayer` 永远零尺寸，画面全空。
+- 亮度键用单次 `CIColorMatrix`（RGB=1、A=luma）+ `CIBlendWithMask`；`CIMaximumCompositing` 叠三通道会把 alpha 叠成 0。
