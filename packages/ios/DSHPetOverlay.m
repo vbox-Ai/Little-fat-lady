@@ -85,6 +85,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     CGPoint _panStartCenter;
     UIInterfaceOrientation _lastInterfaceOrient;
     NSUInteger _orientToken;
+    id _firstFrameObs;
 }
 
 + (instancetype)shared {
@@ -179,6 +180,26 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         DSHPetLog(@"render", @"pet-aspect", @"debug", @{ @"natW": @(nat.width), @"natH": @(nat.height), @"boxW": @(petW), @"boxH": @(petH) });
         _box.accessibilityLabel = @"小肥娘";
         [[DSHPetAnimator shared] startWithDirectory:@"/var/mobile/Library/DSHPet/assets"];
+
+        // 首帧一到就撤占位块。
+        // 以前只在 2 秒后做一次兜底检查，真机表现就是注销后先看到 1~3 秒绿色/蓝色方块，
+        // 然后才"变"成小肥娘——其实第一帧早就出来了，只是没人通知我们。
+        if (_firstFrameObs) {
+            [[NSNotificationCenter defaultCenter] removeObserver:_firstFrameObs];
+            _firstFrameObs = nil;
+        }
+        _firstFrameObs = [[NSNotificationCenter defaultCenter] addObserverForName:@"DSHPetFirstFrame"
+                                                                           object:nil
+                                                                            queue:[NSOperationQueue mainQueue]
+                                                                        usingBlock:^(NSNotification *note) {
+            __strong typeof(self) s = self;
+            if (!s || !s->_box) return;
+            s->_box.backgroundColor = [UIColor clearColor];
+            s->_box.layer.cornerRadius = 0.0;
+            s->_box.layer.borderWidth = 0.0;
+            s->_box.layer.borderColor = [UIColor clearColor].CGColor;
+            DSHPetLog(@"render", @"box-hide-firstframe", @"debug", nil);
+        }];
 
         // 关键：**先别把占位块清掉**。早先一 attach 就设 clearColor，一旦视频解码失败/
         // 素材是坏的，桌面上就什么都没有（0.1.0-56 的真机现象：蓝水母和小肥娘都看不见）。
@@ -484,6 +505,10 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 - (void)detach {
     if (!_window) return;
+    if (_firstFrameObs) {
+        [[NSNotificationCenter defaultCenter] removeObserver:_firstFrameObs];
+        _firstFrameObs = nil;
+    }
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     _window.hidden = YES;
     _window = nil;

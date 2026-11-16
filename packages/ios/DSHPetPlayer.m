@@ -20,6 +20,8 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     BOOL _compositeReady;
     CGSize _naturalSize;
     CGImageSourceRef _webpSrc;
+    NSArray *_webpFrames;
+    BOOL _webpFirstPosted;
     NSInteger _webpCount;
     NSInteger _webpIndex;
     CFTimeInterval _webpNext;
@@ -532,23 +534,28 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 
 - (void)stopWebP {
     if (_webpSrc) { CFRelease(_webpSrc); _webpSrc = NULL; }
+    _webpFrames = nil; _webpFirstPosted = NO;
     _webpCount = 0; _webpIndex = -1; _webpNext = 0;
 }
 
 - (void)advanceWebP:(CFTimeInterval)now force:(BOOL)force {
     if (!_webpSrc || _webpCount <= 0) return;
     if (!force && now < _webpNext) return;
-    NSInteger next = (_webpIndex + 1) % _webpCount;
-    CGImageRef img = CGImageSourceCreateImageAtIndex(_webpSrc, (size_t)next, NULL);
-    if (!img) return;
+    if (_webpFrames.count == 0) return;
+    NSInteger next = (_webpIndex + 1) % (NSInteger)_webpFrames.count;
+    id img = _webpFrames[(NSUInteger)next];
     _webpIndex = next;
     _webpNext = now + (_webpDur > 0.01 ? _webpDur : (1.0 / 12.0));
     if (_naturalSize.width < 1) {
-        _naturalSize = CGSizeMake(CGImageGetWidth(img), CGImageGetHeight(img));
+        _naturalSize = CGSizeMake(CGImageGetWidth((__bridge CGImageRef)img),
+                                  CGImageGetHeight((__bridge CGImageRef)img));
     }
-    self.contentLayer.contents = (__bridge id)img;
-    CGImageRelease(img);
+    self.contentLayer.contents = img;
     _compositeReady = YES;
+    if (!_webpFirstPosted) {
+        _webpFirstPosted = YES;
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"DSHPetFirstFrame" object:nil];
+    }
 }
 
 - (BOOL)playWebPAtURL:(NSURL *)url {
@@ -561,6 +568,23 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     }
     size_t n = CGImageSourceGetCount(src);
     if (n == 0) { CFRelease(src); return NO; }
+
+    // 预解码：把整段动画的帧一次性解成 CGImage 列表。
+    // 之前每 tick 才 CGImageSourceCreateImageAtIndex，CA 拿到的是还没来得及解码的代理位图，
+    // 真机表现就是"偶发模糊、过一下又清楚"。这里用 ShouldCacheImmediately 强制解码完。
+    // 300px 宽、每帧约 360KB，一段 40 帧 ≈ 14MB，只保留当前这一段，可接受。
+    size_t cap = n > 120 ? 120 : n;
+    NSMutableArray *frames = [NSMutableArray arrayWithCapacity:cap];
+    NSDictionary *opts = @{ (id)kCGImageSourceShouldCacheImmediately : @YES,
+                            (id)kCGImageSourceShouldAllowFloat : @NO };
+    for (size_t i = 0; i < cap; i++) {
+        CGImageRef im = CGImageSourceCreateImageAtIndex(src, i, (__bridge CFDictionaryRef)opts);
+        if (!im) continue;
+        [frames addObject:(__bridge id)im];
+        CGImageRelease(im);
+    }
+    if (frames.count == 0) { CFRelease(src); return NO; }
+    _webpFrames = frames;
     _webpSrc = src;
     _webpCount = (NSInteger)n;
     _webpIndex = -1;
