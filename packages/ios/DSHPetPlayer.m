@@ -176,9 +176,10 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     _matteOut = [[AVPlayerItemVideoOutput alloc] initWithPixelBufferAttributes:attrs];
 
     AVPlayerItem *cItem = [AVPlayerItem playerItemWithAsset:[AVURLAsset URLAssetWithURL:curl options:nil]];
-    AVPlayerItem *mItem = [AVPlayerItem playerItemWithAsset:[AVURLAsset URLAssetWithURL:murl options:nil]];
+    AVPlayerItem *mItem = murl ? [AVPlayerItem playerItemWithAsset:[AVURLAsset URLAssetWithURL:murl options:nil]] : nil;
     [cItem addOutput:_colorOut];
-    [mItem addOutput:_matteOut];
+    if (mItem) [mItem addOutput:_matteOut];
+    else _matteOut = nil;
 
     if (!_player) {
         _player = [AVPlayer playerWithPlayerItem:cItem];
@@ -188,15 +189,20 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     } else {
         [_player replaceCurrentItemWithPlayerItem:cItem];
     }
-    if (!_mattePlayer) {
-        _mattePlayer = [AVPlayer playerWithPlayerItem:mItem];
-        _mattePlayer.muted = YES;
-        _mattePlayer.actionAtItemEnd = AVPlayerActionAtItemEndNone;
-    } else {
-        [_mattePlayer replaceCurrentItemWithPlayerItem:mItem];
+    if (mItem) {
+        if (!_mattePlayer) {
+            _mattePlayer = [AVPlayer playerWithPlayerItem:mItem];
+            _mattePlayer.muted = YES;
+            _mattePlayer.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+        } else {
+            [_mattePlayer replaceCurrentItemWithPlayerItem:mItem];
+        }
+        _mattePlayer.automaticallyWaitsToMinimizeStalling = NO;
+        [_mattePlayer play];
+    } else if (_mattePlayer) {
+        [_mattePlayer pause];
     }
     _player.automaticallyWaitsToMinimizeStalling = NO;
-    _mattePlayer.automaticallyWaitsToMinimizeStalling = NO;
 
     if (!_contentLayer) {
         _contentLayer = [CALayer layer];
@@ -217,7 +223,6 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     [_link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
 
     [_player play];
-    [_mattePlayer play];
     [self observeEnd];
 }
 
@@ -232,23 +237,23 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 }
 
 - (void)onTick:(CADisplayLink *)link {
-    if (!_colorOut || !_matteOut) return;
+    if (!_colorOut) return;
     AVPlayerItem *cItem = _player.currentItem;
-    AVPlayerItem *mItem = _mattePlayer.currentItem;
-    if (!cItem || !mItem) return;
-    if (cItem.status != AVPlayerItemStatusReadyToPlay || mItem.status != AVPlayerItemStatusReadyToPlay) return;
+    AVPlayerItem *mItem = _matteOut ? _mattePlayer.currentItem : nil;
+    if (!cItem) return;
+    if (cItem.status != AVPlayerItemStatusReadyToPlay) return;
+    if (_matteOut && (!mItem || mItem.status != AVPlayerItemStatusReadyToPlay)) return;
 
     CMTime t = cItem.currentTime;
     if ([cItem duration].flags && CMTimeCompare(t, cItem.duration) >= 0) {
         // 循环：两路同时回零，避免音画/影音错位
         [cItem seekToTime:kCMTimeZero toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
-        [mItem seekToTime:kCMTimeZero toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+        if (mItem) [mItem seekToTime:kCMTimeZero toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
         return;
     }
     CVPixelBufferRef cb = [_colorOut copyPixelBufferForItemTime:t itemTimeForDisplay:NULL];
-    CVPixelBufferRef mb = [_matteOut copyPixelBufferForItemTime:t itemTimeForDisplay:NULL];
-    if (!cb || !mb) {
-        if (cb) CVPixelBufferRelease(cb);
+    CVPixelBufferRef mb = _matteOut ? [_matteOut copyPixelBufferForItemTime:t itemTimeForDisplay:NULL] : NULL;
+    if (!cb) {
         if (mb) CVPixelBufferRelease(mb);
         return;
     }
@@ -256,14 +261,40 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     if (!_ci) _ci = [CIContext contextWithOptions:@{ kCIContextUseSoftwareRenderer: @NO }];
 
     CIImage *color = [CIImage imageWithCVPixelBuffer:cb];
-    CIImage *matte = [CIImage imageWithCVPixelBuffer:mb];
-    // 灰度蒙版 → 把亮度搬到 alpha（CIBlendWithMask 认的是 alpha）
-    CIImage *mask = [matte imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
-        @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
-        @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-        @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-        @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
-    }];
+    CIImage *mask = nil;
+    if (mb) {
+        // 独立蒙版：灰度搬到 alpha
+        CIImage *matte = [CIImage imageWithCVPixelBuffer:mb];
+        mask = [matte imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
+            @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
+            @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+        }];
+    } else {
+        // 没有蒙版：拿彩色画面自己的最大通道当 alpha（黑底素材的亮度键）
+        CIImage *r = [color imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
+            @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
+            @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputBiasVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+        }];
+        CIImage *g = [color imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
+            @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
+            @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+        }];
+        CIImage *b = [color imageByApplyingFilter:@"CIColorMatrix" withInputParameters:@{
+            @"inputRVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputGVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+            @"inputBVector": [CIVector vectorWithX:0 Y:0 Z:0 W:1],
+            @"inputAVector": [CIVector vectorWithX:0 Y:0 Z:0 W:0],
+        }];
+        mask = [r imageByApplyingFilter:@"CIMaximumCompositing" withInputParameters:@{ kCIInputBackgroundImageKey: g }];
+        mask = [mask imageByApplyingFilter:@"CIMaximumCompositing" withInputParameters:@{ kCIInputBackgroundImageKey: b }];
+    }
     CIImage *clear = [[CIImage imageWithColor:[CIColor colorWithRed:0 green:0 blue:0 alpha:0]]
                       imageByCroppingToRect:color.extent];
     CIImage *out = [[CIFilter filterWithName:@"CIBlendWithMask" keysAndValues:
@@ -278,20 +309,16 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
             _compositeReady = YES;
             _naturalSize = CGSizeMake(CGImageGetWidth(cg), CGImageGetHeight(cg));
             DSHPetLog(@"render", @"composite-ok", @"info", @{
-                @"w": @(_naturalSize.width), @"h": @(_naturalSize.height) });
+                @"w": @(_naturalSize.width), @"h": @(_naturalSize.height),
+                @"mode": _matteOut ? @"matte" : @"lumakey" });
         }
     }
     CVPixelBufferRelease(cb);
-    CVPixelBufferRelease(mb);
+    if (mb) CVPixelBufferRelease(mb);
 }
 
 - (BOOL)playClipAtURL:(NSURL *)url matteURL:(nullable NSURL *)matteURL {
     if (!url) return NO;
-    if (!matteURL) {
-        [self stopComposite];
-        _contentLayer.contents = nil;
-        return [self playClipAtURL:url];
-    }
     if (_currentURL && [_currentURL.path isEqualToString:url.path] &&
         _matteURL && [_matteURL.path isEqualToString:matteURL.path] && _link) {
         [_player play];
