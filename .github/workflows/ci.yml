@@ -46,7 +46,8 @@ jobs:
             libncurses-dev git curl unzip zip
           # ldid：Theos 签名必需，Ubuntu 源里没有，源码编一个
           if ! command -v ldid >/dev/null; then
-            git clone --depth 1 https://github.com/ProcursusTeam/ldid.git "$RUNNER_TEMP/ldid"
+            # 不能 --depth 1：ldid 的 Makefile 要 `git describe` 取版本号
+            git clone https://github.com/ProcursusTeam/ldid.git "$RUNNER_TEMP/ldid"
             make -C "$RUNNER_TEMP/ldid" -j"$(nproc)"
             sudo cp "$RUNNER_TEMP/ldid/ldid" /usr/local/bin/ldid
             chmod +x /usr/local/bin/ldid
