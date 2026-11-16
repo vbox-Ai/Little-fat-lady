@@ -87,3 +87,4 @@
 ## 阶段结论（S4 · 图层尺寸）
 - 移除 `AVPlayerLayer` 后必须复核 `syncLayerFrame` 之类"以 _layer 存在为前提"的早退，否则 `_contentLayer` 永远零尺寸，画面全空。
 - 亮度键用单次 `CIColorMatrix`（RGB=1、A=luma）+ `CIBlendWithMask`；`CIMaximumCompositing` 叠三通道会把 alpha 叠成 0。
+- 会话信息气泡：数据来自 `/state` 的 `sections.notify.data.event.data.text`（`turn/end`），counter 变了才算新消息；方案定在 S6a 气泡层 / S6b 接长轮询 / S10 扩来源，详见 PLAN §21。
