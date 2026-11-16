@@ -92,7 +92,7 @@ static NSString *const kCatOther = @"other";
     NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:scanDir error:NULL] ?: @[];
 
     for (NSString *n in [names sortedArrayUsingSelector:@selector(compare:)]) {
-        NSString *full = [self.dir stringByAppendingPathComponent:n];
+        NSString *full = [scanDir stringByAppendingPathComponent:n];
         BOOL isDir = NO;
         if ([fm fileExistsAtPath:full isDirectory:&isDir] && isDir) {
             NSArray<NSString *> *inner = [fm contentsOfDirectoryAtPath:full error:NULL] ?: @[];
@@ -116,7 +116,7 @@ static NSString *const kCatOther = @"other";
 
     NSMutableDictionary *counts = [NSMutableDictionary dictionary];
     for (NSString *k in self.groups) counts[k] = @(self.groups[k].count);
-    DSHPetLog(@"anim", @"index", @"info", @{ @"dir": self.dir, @"groups": counts });
+    DSHPetLog(@"anim", @"index", @"info", @{ @"dir": scanDir, @"groups": counts });
 }
 
 - (nullable NSString *)pickFrom:(NSString *)cat {
