@@ -84,7 +84,22 @@ static NSString *const kCatOther = @"other";
 
     NSMutableDictionary *counts = [NSMutableDictionary dictionary];
     for (NSString *k in self.groups) counts[k] = @(self.groups[k].count);
-    DSHPetLog(@"anim", @"index", @"info", @{ @"dir": self.dir, @"picked": bestDir ?: @"none", @"clips": @(bestCount), @"groups": counts });
+    // 每个候选根实际扫到几段：真机日志里这一项能直接判定"路径对不对"
+    NSMutableArray<NSString *> *probe = [NSMutableArray array];
+    for (NSString *d in scanDirs) {
+        NSDictionary *g = perRoot[d] ?: @{};
+        NSUInteger n = 0;
+        for (NSString *k in g) n += [g[k] count];
+        [probe addObject:[NSString stringWithFormat:@"%@=%lu", d, (unsigned long)n]];
+    }
+    DSHPetLog(@"anim", @"index", @"info", @{ @"dir": self.dir,
+                                            @"picked": bestDir ?: @"none",
+                                            @"clips": @(bestCount),
+                                            @"scan": probe,
+                                            @"groups": counts });
+    if (bestCount == 0) {
+        DSHPetLog(@"anim", @"index-empty", @"error", @{ @"scan": probe });
+    }
 }
 
 - (void)buildIndexFromDir:(NSString *)scanDir {

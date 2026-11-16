@@ -33,6 +33,23 @@ NSArray<NSString *> *DSHPetAssetRoots(void) {
     [roots addObject:@"/Library/Application Support/DSHPet"];
     [roots addObject:@"/var/jb/var/mobile/Library/DSHPet/assets"];
 
+    // 3) roothide 的真实越狱根是随机命名的假根（.jbroot-XXXXXXXX），
+    //    未链接 libroot 的 dylib 无法把 /var/jb 重定向过去，必须自己去容器目录里找。
+    NSArray<NSString *> *containers = @[ @"/var/containers/Bundle/Application",
+                                         @"/private/preboot" ];
+    for (NSString *base in containers) {
+        NSArray<NSString *> *items = [fm contentsOfDirectoryAtPath:base error:NULL] ?: @[];
+        for (NSString *it in items) {
+            NSString *low = it.lowercaseString;
+            BOOL looksJb = [low hasPrefix:@".jbroot-"] || [low hasPrefix:@"jb-"] || [low containsString:@"jbroot"];
+            if (!looksJb) continue;
+            NSString *sub = [base stringByAppendingPathComponent:it];
+            [roots addObject:[sub stringByAppendingPathComponent:@"var/jb/Library/Application Support/DSHPet"]];
+            [roots addObject:[sub stringByAppendingPathComponent:@"Library/Application Support/DSHPet"]];
+            [roots addObject:[sub stringByAppendingPathComponent:@"var/jb/var/mobile/Library/DSHPet/assets"]];
+        }
+    }
+
     NSMutableArray<NSString *> *out = [NSMutableArray array];
     for (NSString *r in roots) {
         BOOL isDir = NO;
