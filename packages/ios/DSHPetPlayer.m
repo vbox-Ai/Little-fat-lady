@@ -181,7 +181,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         _contentLayer = [CALayer layer];
         _contentLayer.opaque = NO;
         _contentLayer.backgroundColor = [UIColor clearColor].CGColor;
-        _contentLayer.contentsGravity = kCAGravityResizeAspect;
+        _contentLayer.contentsGravity = kCAGravityResize;
         _contentLayer.magnificationFilter = kCAFilterLinear;
         _contentLayer.minificationFilter = kCAFilterLinear;
     }
@@ -334,6 +334,21 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     CGImageRelease(img);
     DSHPetLog(@"render", @"poster-ok", @"info", @{ @"w": @(out.size.width), @"h": @(out.size.height) });
     return out;
+}
+
+
+// 让「一个源像素 = 一个屏幕像素」：contentsScale 必须等于 图像宽/图层宽(点)。
+// 之前固定成 [UIScreen scale]，只要图层点宽不是图像的 1/3 整，CA 就会把整张图
+// 重采样一次——这就是"怎么都糊、点一下（transform 变了触发重绘）又清楚一会儿"的来源。
+- (void)matchContentsScaleTo:(CGImageRef)img {
+    if (!img) return;
+    CGFloat imgW = (CGFloat)CGImageGetWidth(img);
+    CGFloat layerW = CGRectGetWidth(self.contentLayer.bounds);
+    if (imgW < 1.0 || layerW < 1.0) return;
+    CGFloat s = imgW / layerW;
+    if (fabs(self.contentLayer.contentsScale - s) > 0.01) {
+        self.contentLayer.contentsScale = s;
+    }
 }
 
 - (BOOL)isReady {
@@ -550,10 +565,19 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         _naturalSize = CGSizeMake(CGImageGetWidth((__bridge CGImageRef)img),
                                   CGImageGetHeight((__bridge CGImageRef)img));
     }
+    [self matchContentsScaleTo:(__bridge CGImageRef)img];
     self.contentLayer.contents = img;
     _compositeReady = YES;
     if (!_webpFirstPosted) {
         _webpFirstPosted = YES;
+        DSHPetLog(@"render", @"sharpness", @"info", @{
+            @"imgW": @(CGImageGetWidth((__bridge CGImageRef)img)),
+            @"imgH": @(CGImageGetHeight((__bridge CGImageRef)img)),
+            @"boxW": @(CGRectGetWidth(self.contentLayer.bounds)),
+            @"boxH": @(CGRectGetHeight(self.contentLayer.bounds)),
+            @"cscale": @(self.contentLayer.contentsScale),
+            @"scr": @([UIScreen mainScreen].scale)
+        });
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DSHPetFirstFrame" object:nil];
     }
 }
@@ -604,7 +628,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         self.contentLayer = [CALayer layer];
         self.contentLayer.opaque = NO;
         self.contentLayer.backgroundColor = [UIColor clearColor].CGColor;
-        self.contentLayer.contentsGravity = kCAGravityResizeAspect;
+        self.contentLayer.contentsGravity = kCAGravityResize;
         self.contentLayer.allowsGroupOpacity = NO;
         self.contentLayer.shouldRasterize = NO;
         // 帧像素 >= 显示像素时才锐：常驻动作按 360px 出图（118pt @3x ≈ 354px），
