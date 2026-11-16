@@ -91,3 +91,5 @@
 - WebP 动画必须预解码：`CGImageSourceCreateImageAtIndex` 是懒解码，直接塞 `layer.contents` 会让 CoreAnimation 先用低清代理顶上 → 真机"糊一下又清楚"；用 `kCGImageSourceShouldCacheImmediately` 一次解成 CGImage 列表。
 - 占位色块不能靠定时器撤：播放器画出首帧就发 `DSHPetFirstFrame`，浮层收到立刻撤底色，否则注销后会先看到 1~3 秒蓝/绿方块。
 - 素材分辨率要配显示尺寸：包内 300px 宽，桌面默认 118pt（@3x ≈ 354px），等于放大 18%；再模糊就重出 420px 宽素材包。
+- 上游 webm 的 alpha 在 WebM AlphaMode 边数据里，ffmpeg 默认 vp9 解码器会丢弃（日志：`Ignoring unsupported WebM alpha channel side data`）；必须 `-c:v libvpx-vp9 -i in.webm` 才能拿到真透明。
+- 素材宽度要 >= 显示像素：桌面默认 118pt @3x≈354px，所以常驻动作出 360px、稀有动作 300px（混合包 69MB）。
