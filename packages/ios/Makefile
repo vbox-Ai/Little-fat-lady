@@ -7,6 +7,7 @@ export TWEAK_NAME = DSHPet
 export DSHPet_FILES = Tweak.xm DSHPetBoot.m DSHPetOverlay.m DSHPetAnimator.m DSHPetPlayer.m DSHPetAssets.m
 export DSHPet_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-incomplete-umbrella
 export DSHPet_FRAMEWORKS = UIKit QuartzCore AVFoundation
+export DSHPet_FRAMEWORKS += CoreMotion
 export DSHPet_LIBRARIES = substrate
 
 include $(THEOS)/makefiles/common.mk

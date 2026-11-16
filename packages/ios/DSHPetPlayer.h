@@ -43,6 +43,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// 当前素材的原始像素尺寸（无素材时返回 CGSizeZero）。
 /// 宿主尺寸要按这个比例算，写死 2160x1215 会让不同素材出现大片透明边。
 @property (nonatomic, readonly) CGSize naturalSize;
+- (void)refreshLayout;
 
 /// S4：3s 看门狗，第三方播放器/来电把 AVPlayer 停了之后自动恢复。
 - (void)startWatchdog;

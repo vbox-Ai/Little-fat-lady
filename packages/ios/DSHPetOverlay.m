@@ -2,6 +2,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "DSHPetBoot.h"
 #import "DSHPetOverlay.h"
+#import <CoreMotion/CoreMotion.h>
 #import "DSHPetPlayer.h"
 #import "DSHPetAnimator.h"
 
@@ -95,6 +96,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     CGPoint _panLastPoint;
     CFTimeInterval _panLastT;
     BOOL _physRunning;
+    CMMotionManager *_motion;
+    BOOL _userSized;      // 用户捏过之后就别再自动改尺寸
 }
 
 + (instancetype)shared {
@@ -195,6 +198,14 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
             [[NSNotificationCenter defaultCenter] removeObserver:_firstFrameObs];
             _firstFrameObs = nil;
         }
+        // 首帧尺寸对齐：图像宽 / 屏幕 scale，正好 1:1，不缩放就不会糊
+        if (!_userSized) {
+            CGSize nat0 = [[DSHPetPlayer shared] naturalSize];
+            CGFloat scr0 = [UIScreen mainScreen].scale > 0 ? [UIScreen mainScreen].scale : 3.0;
+            if (nat0.width > 1.0) {
+                [self applyPetWidth:round(nat0.width) / scr0];
+            }
+        }
         _firstFrameObs = [[NSNotificationCenter defaultCenter] addObserverForName:@"DSHPetFirstFrame"
                                                                            object:nil
                                                                             queue:[NSOperationQueue mainQueue]
@@ -210,7 +221,15 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         _box.layer.cornerRadius = 0.0;
         _box.layer.borderWidth = 0.0;
 
-        [[DSHPetAnimator shared] startWithDirectory:@"/var/mobile/Library/DSHPet/assets"];
+        if (!_motion) {
+        _motion = [[CMMotionManager alloc] init];
+        if (_motion.isAccelerometerAvailable) {
+            _motion.accelerometerUpdateInterval = 1.0 / 30.0;
+            [_motion startAccelerometerUpdates];
+        }
+    }
+
+    [[DSHPetAnimator shared] startWithDirectory:@"/var/mobile/Library/DSHPet/assets"];
         if ([[DSHPetPlayer shared] isReady]) {
             _firstFrameSeen = YES;
             [self hideBoxChrome];
@@ -328,6 +347,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     if (g.state == UIGestureRecognizerStateBegan) {
         _pinchStartW = CGRectGetWidth(_box.bounds);
     }
+    _userSized = YES;
     CGFloat w = _pinchStartW * g.scale;
     if (g.state == UIGestureRecognizerStateChanged || g.state == UIGestureRecognizerStateEnded) {
         [self applyPetWidth:w];
@@ -344,15 +364,23 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (void)applyPetWidth:(CGFloat)w {
     CGFloat scrW = CGRectGetWidth([UIScreen mainScreen].bounds);
     w = MAX(scrW * 0.16, MIN(scrW * 0.62, w));
+
+    // 对齐到整数设备像素（1/3 pt），否则图层落在半像素上，CA 会插值 → 发虚
+    CGFloat scr = [UIScreen mainScreen].scale > 0 ? [UIScreen mainScreen].scale : 3.0;
+    w = round(w * scr) / scr;
+
     CGSize nat = [[DSHPetPlayer shared] naturalSize];
     CGFloat ratio = (nat.width > 1.0) ? (nat.height / nat.width) : (1215.0 / 2160.0);
-    CGFloat h = round(w * ratio);
+    CGFloat h = round(w * ratio * scr) / scr;
+
     CGRect f = _box.frame;
     CGPoint c = _box.center;
     f.size = CGSizeMake(w, h);
     _box.frame = f;
     _box.center = c;
+
     [[DSHPetPlayer shared] setDisplaySize:CGSizeMake(w, h)];
+    [[DSHPetPlayer shared] refreshLayout];   // 尺寸变了立刻按当前帧重排，别等下一帧
 }
 
 - (void)onPan:(UIPanGestureRecognizer *)g {
@@ -449,12 +477,26 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     if (minX > maxX) minX = maxX = b.width / 2.0;
     if (minY > maxY) minY = maxY = b.height / 2.0;
 
+    CGFloat gx = 0, gy = [self physGravity];
+    NSDictionary *ph = _cfg[@"physics"];
+    BOOL tilt = ph[@"tiltGravity"] ? [ph[@"tiltGravity"] boolValue] : YES;
+    if (tilt && _motion && _motion.accelerometerData) {
+        CMAcceleration a = _motion.accelerometerData.acceleration;
+        // 竖屏：a.x 右为正，a.y 上为负（-1 表示正立）
+        CGFloat mag = sqrt(a.x * a.x + a.y * a.y);
+        if (mag > 0.08) {
+            gx = a.x * [self physGravity];
+            gy = -a.y * [self physGravity];
+        }
+    }
+
     CGFloat chunk = 1.0 / 120.0;
     CGFloat remain = dt;
     while (remain > 0) {
         CGFloat h = MIN(chunk, remain);
         remain -= h;
-        _vel.y += [self physGravity] * h;
+        _vel.y += gy * h;
+        _vel.x += gx * h;
         CGPoint c = _box.center;
         c.x += _vel.x * h;
         c.y += _vel.y * h;

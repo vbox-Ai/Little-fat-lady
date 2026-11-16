@@ -44,7 +44,9 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 - (void)onWatchdog:(NSTimer *)t;
 @end
 
-@implementation DSHPetPlayer
+@implementation DSHPetPlayer {
+    id _curFrame;   // 当前帧 CGImage，尺寸变化后用它重排
+}
 
 + (instancetype)shared {
     static DSHPetPlayer *s;
@@ -55,7 +57,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 
 - (instancetype)init {
     if ((self = [super init])) {
-        _displaySize = CGSizeMake(462, 260);
+        _displaySize = CGSizeMake(130, 100);
     }
     return self;
 }
@@ -372,6 +374,13 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     [CATransaction commit];
 }
 
+// 宿主尺寸变了（捏合、旋转、注销后重建）就按当前帧重排，避免沿用旧矩形被 Resize 拉伸。
+- (void)refreshLayout {
+    if (_curFrame) {
+        [self layoutContentsForImage:(__bridge CGImageRef)_curFrame];
+    }
+}
+
 - (BOOL)isReady {
     if (_compositeReady) return YES;
     AVPlayerItem *item = _player.currentItem;
@@ -586,6 +595,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         _naturalSize = CGSizeMake(CGImageGetWidth((__bridge CGImageRef)img),
                                   CGImageGetHeight((__bridge CGImageRef)img));
     }
+    _curFrame = img;
     [self layoutContentsForImage:(__bridge CGImageRef)img];
     self.contentLayer.contents = img;
     _compositeReady = YES;
