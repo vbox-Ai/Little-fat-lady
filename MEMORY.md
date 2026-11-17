@@ -94,3 +94,7 @@
 - 上游 webm 的 alpha 在 WebM AlphaMode 边数据里，ffmpeg 默认 vp9 解码器会丢弃（日志：`Ignoring unsupported WebM alpha channel side data`）；必须 `-c:v libvpx-vp9 -i in.webm` 才能拿到真透明。
 - 素材宽度要 >= 显示像素：桌面默认 118pt @3x≈354px，所以常驻动作出 360px、稀有动作 300px（混合包 69MB）。
 - 「等就绪再撤占位」这类逻辑，通知订阅必须在触发动作之前注册；否则首帧很快时通知必被丢掉（0.1.0-90 的绿方块裹宠物就是这么来的）。
+- 尺寸必须对齐整数设备像素（1/3 pt）：宽高都 `round(v*scale)/scale`，否则 CA 在半个像素上插值 → 发虚。
+- 素材像素 ≥ 显示像素：首帧起按 `naturalSize.width / 屏幕 scale` 定宽（390px@3x = 130pt），不缩放才不糊。
+- 图层矩形必须跟宿主尺寸同步：`contentsGravity=Resize` 下，宿主变了不重算 rect 就会**拉长**（0.1.0-94/97 真机现象），改尺寸后立刻 `refreshLayout`。
+- iOS 原生能震也能感知倾斜：`AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)` / `UIImpactFeedbackGenerator` / `CoreMotion`；上游说的"iOS 不生效"只针对 Web 的 `navigator.vibrate`。
