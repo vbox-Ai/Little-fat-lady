@@ -46,6 +46,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 
 @implementation DSHPetPlayer {
     id _curFrame;   // 当前帧 CGImage，尺寸变化后用它重排
+    NSInteger _webpToken;  // 解码任务身份号：后台解码回切时对不上就丢弃，防快速换片竞态
 }
 
 + (instancetype)shared {
@@ -641,7 +642,8 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
 
 - (BOOL)playWebPAtURL:(NSURL *)url {
     [self stopComposite];
-    [self stopWebP];
+    NSInteger token = ++_webpToken;   // 本次换片的身份号，旧后台任务回切对不上就丢弃
+
     CGImageSourceRef src = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
     if (!src) {
         DSHPetLog(@"player", @"webp-open-failed", @"error", @{ @"file": url.lastPathComponent ?: @"" });
@@ -650,29 +652,8 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     size_t n = CGImageSourceGetCount(src);
     if (n == 0) { CFRelease(src); return NO; }
 
-    // 预解码：把整段动画的帧一次性解成 CGImage 列表。
-    // 之前每 tick 才 CGImageSourceCreateImageAtIndex，CA 拿到的是还没来得及解码的代理位图，
-    // 真机表现就是"偶发模糊、过一下又清楚"。这里用 ShouldCacheImmediately 强制解码完。
-    // 300px 宽、每帧约 360KB，一段 40 帧 ≈ 14MB，只保留当前这一段，可接受。
-    // 上限 256 帧：512px 素材 121 帧 × 590KB ≈ 71MB，只留当前这一段。
-    // 早期写 120 —— 121 帧的片段会被砍掉最后一帧（循环时跳一下），
-    // 且超长片段的后半段若走懒解码就回落到低清代理。这里一次解干净。
-    size_t cap = n > 256 ? 256 : n;
-    NSMutableArray *frames = [NSMutableArray arrayWithCapacity:cap];
-    NSDictionary *opts = @{ (id)kCGImageSourceShouldCacheImmediately : @YES,
-                            (id)kCGImageSourceShouldAllowFloat : @NO };
-    for (size_t i = 0; i < cap; i++) {
-        CGImageRef im = CGImageSourceCreateImageAtIndex(src, i, (__bridge CFDictionaryRef)opts);
-        if (!im) continue;
-        [frames addObject:(__bridge id)im];
-        CGImageRelease(im);
-    }
-    if (frames.count == 0) { CFRelease(src); return NO; }
-    _webpFrames = frames;
-    _webpSrc = src;
-    _webpCount = (NSInteger)n;
-    _webpIndex = -1;
-    _webpDur = 1.0 / 12.0;
+    // 帧时长属性只解析文件头（快），留在主线程读；解码循环搬后台，避免换片瞬间卡顿。
+    double dur = 1.0 / 12.0;
     CFDictionaryRef props = CGImageSourceCopyPropertiesAtIndex(src, 0, NULL);
     if (props) {
         NSDictionary *d = CFBridgingRelease(props);
@@ -682,8 +663,9 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
             NSDictionary *gif = d[(NSString *)kCGImagePropertyGIFDictionary];
             delay = gif[(NSString *)kCGImagePropertyGIFDelayTime];
         }
-        if (delay && delay.doubleValue > 0.01) _webpDur = delay.doubleValue;
+        if (delay && delay.doubleValue > 0.01) dur = delay.doubleValue;
     }
+
     if (!self.contentLayer) {
         self.contentLayer = [CALayer layer];
         self.contentLayer.opaque = NO;
@@ -701,20 +683,61 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         [self.host.layer addSublayer:self.contentLayer];
     }
     [self syncLayerFrame];
-    [self advanceWebP:CACurrentMediaTime() force:YES];
-    if (!_link) {
-        _link = [CADisplayLink displayLinkWithTarget:self selector:@selector(onTick:)];
-        [_link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+
+    // 主线程先解第 0 帧立即上屏，消除"换片后空白几百毫秒"的空档；剩余帧后台补。
+    NSDictionary *opts = @{ (id)kCGImageSourceShouldCacheImmediately : @YES,
+                            (id)kCGImageSourceShouldAllowFloat : @NO };
+    CGImageRef first = CGImageSourceCreateImageAtIndex(src, 0, (__bridge CFDictionaryRef)opts);
+    if (first) {
+        // 必须让 ARC 接管所有权：_curFrame 要用到下一次 refreshLayout，
+        // 直接 (__bridge id) 再 CGImageRelease 会留悬空指针，refreshLayout 一碰就崩。
+        id firstObj = CFBridgingRelease(first);
+        _curFrame = firstObj;
+        _naturalSize = CGSizeMake(CGImageGetWidth((__bridge CGImageRef)firstObj),
+                                  CGImageGetHeight((__bridge CGImageRef)firstObj));
+        [self layoutContentsForImage:(__bridge CGImageRef)firstObj];
+        self.contentLayer.contents = (__bridge id)firstObj;
+        _compositeReady = YES;   // 第 0 帧已上屏，naturalSize 立即可用
     }
-    DSHPetLog(@"player", @"webp-ok", @"info", @{ @"file": url.lastPathComponent ?: @"",
-        @"frames": @(_webpCount), @"decoded": @(frames.count),
-        @"dur": @(_webpDur),
-        @"mb": @(round((double)frames.count * (double)(CGImageGetBytesPerRow((__bridge CGImageRef)frames.lastObject) * CGImageGetHeight((__bridge CGImageRef)frames.lastObject)) / 1048576.0 * 10.0) / 10.0) });
-    // 帧数与源文件帧数不一致会表现为"循环时跳帧"，单独标出来
-    if (frames.count != n) {
-        DSHPetLog(@"player", @"webp-truncated", @"warn", @{ @"file": url.lastPathComponent ?: @"",
-            @"src": @(n), @"decoded": @(frames.count) });
-    }
+
+    size_t cap = n > 256 ? 256 : n;
+    // src 的所有权交给后台 block。回切主线程且 token 一致时才挂到 _webpSrc；
+    // 不一致（期间又换了片）就 CFRelease 丢弃，避免 use-after-free。
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSMutableArray *frames = [NSMutableArray arrayWithCapacity:cap];
+        for (size_t i = 0; i < cap; i++) {
+            CGImageRef im = CGImageSourceCreateImageAtIndex(src, i, (__bridge CFDictionaryRef)opts);
+            if (!im) continue;
+            [frames addObject:(__bridge id)im];
+            CGImageRelease(im);
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (token != self->_webpToken) {   // 期间已换片，本次结果作废
+                CFRelease(src);
+                return;
+            }
+            if (frames.count == 0) { CFRelease(src); return; }
+            [self stopWebP];                    // 释放上一段
+            self->_webpFrames = frames;
+            self->_webpSrc = src;               // src 所有权转交 _webpSrc
+            self->_webpCount = (NSInteger)n;
+            self->_webpIndex = -1;
+            self->_webpDur = dur;
+            [self advanceWebP:CACurrentMediaTime() force:YES];
+            if (!self->_link) {
+                self->_link = [CADisplayLink displayLinkWithTarget:self selector:@selector(onTick:)];
+                [self->_link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+            }
+            DSHPetLog(@"player", @"webp-ok", @"info", @{ @"file": url.lastPathComponent ?: @"",
+                @"frames": @(self->_webpCount), @"decoded": @(frames.count),
+                @"dur": @(self->_webpDur),
+                @"mb": @(round((double)frames.count * (double)(CGImageGetBytesPerRow((__bridge CGImageRef)frames.lastObject) * CGImageGetHeight((__bridge CGImageRef)frames.lastObject)) / 1048576.0 * 10.0) / 10.0) });
+            if (frames.count != n) {
+                DSHPetLog(@"player", @"webp-truncated", @"warn", @{ @"file": url.lastPathComponent ?: @"",
+                    @"src": @(n), @"decoded": @(frames.count) });
+            }
+        });
+    });
     return YES;
 }
 
