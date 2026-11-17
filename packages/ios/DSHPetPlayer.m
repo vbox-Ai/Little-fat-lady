@@ -363,34 +363,27 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     CGRect box = self.host ? self.host.bounds : self.contentLayer.superlayer.bounds;
     if (CGRectGetWidth(box) < 1.0 || CGRectGetHeight(box) < 1.0) return;
 
-    CGFloat scaleFit = MIN(CGRectGetWidth(box) / imgW, CGRectGetHeight(box) / imgH);
-    // 只许缩、不许放：放大就是把像素摊开，必然糊。母版 390px 在 3x 屏上正好 1:1。
-    CGFloat maxScale = 1.0 / MAX([UIScreen mainScreen].scale, 1.0);
-    if (scaleFit > maxScale) scaleFit = maxScale;
-    CGFloat w = imgW * scaleFit;
-    CGFloat h = imgH * scaleFit;
+    CGFloat sc = [UIScreen mainScreen].scale;
+    if (sc < 1.0) sc = 2.0;
 
-    // 对齐到整数屏幕像素：落在半像素边界上时 CA 会做一次插值，边缘就发虚。
-    CGFloat scr = [UIScreen mainScreen].scale > 0 ? [UIScreen mainScreen].scale : 3.0;
-    w = round(w * scr) / scr;
-    h = round(h * scr) / scr;
-    CGFloat x = round((CGRectGetMidX(box) - w / 2.0) * scr) / scr;
-    CGFloat y = round((CGRectGetMidY(box) - h / 2.0) * scr) / scr;
-    CGRect rect = CGRectMake(x, y, w, h);
+    // 1:1 直出：图层尺寸 = 图像像素 / 屏幕 scale，position 对齐到整像素，
+    // 这样 CA 既不用缩放也不用重采样，任何一帧都不会糊。
+    // 关键：position 必须落在 1/scale 的整数倍上，否则合成器仍会重采样。
+    CGFloat w = imgW / sc;
+    CGFloat h = imgH / sc;
+
+    CGFloat cx = CGRectGetMidX(box);
+    CGFloat cy = CGRectGetMidY(box);
+    cx = round(cx * sc) / sc;
+    cy = round(cy * sc) / sc;
 
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    self.contentLayer.frame = rect;
-    self.contentLayer.contentsGravity = kCAGravityResizeAspect;
-    self.contentLayer.contentsScale = imgW / MAX(w, 1.0);
+    self.contentLayer.bounds = CGRectMake(0, 0, w, h);
+    self.contentLayer.position = CGPointMake(cx, cy);
+    self.contentLayer.contentsGravity = kCAGravityResize;
+    self.contentLayer.contentsScale = sc;
     [CATransaction commit];
-}
-
-// 宿主尺寸变了（捏合、旋转、注销后重建）就按当前帧重排，避免沿用旧矩形被 Resize 拉伸。
-- (void)refreshLayout {
-    if (_curFrame) {
-        [self layoutContentsForImage:(__bridge CGImageRef)_curFrame];
-    }
 }
 
 - (BOOL)isReady {
