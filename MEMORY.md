@@ -98,3 +98,4 @@
 - 素材像素 ≥ 显示像素：首帧起按 `naturalSize.width / 屏幕 scale` 定宽（390px@3x = 130pt），不缩放才不糊。
 - 图层矩形必须跟宿主尺寸同步：`contentsGravity=Resize` 下，宿主变了不重算 rect 就会**拉长**（0.1.0-94/97 真机现象），改尺寸后立刻 `refreshLayout`。
 - iOS 原生能震也能感知倾斜：`AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)` / `UIImpactFeedbackGenerator` / `CoreMotion`；上游说的"iOS 不生效"只针对 Web 的 `navigator.vibrate`。
+- `contentsGravity=Resize` 下任何「把 frame 铺满宿主」的动作（`syncLayerFrame`/`setDisplaySize`）之后都必须按图像比例重算 rect，否则注销重建窗口就会拉长——pinch 能修好正说明是这条没做。
