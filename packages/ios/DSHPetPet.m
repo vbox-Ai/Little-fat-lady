@@ -192,7 +192,7 @@ static UIEdgeInsets DSHPetPetMargins(UIEdgeInsets sa, NSInteger preset) {
     return MIN(MAX(r, 0.1), 0.95);
 }
 
-- (BOOL)stepWithDt:(CFTimeInterval)dt others:(NSArray<NSValue *> *)others host:(CGRect)host config:(NSDictionary *)cfg {
+- (BOOL)stepWithDt:(CFTimeInterval)dt others:(NSArray<NSValue *> *)others host:(CGRect)host config:(nullable NSDictionary *)cfg {
     if (!_box || _panning) return NO;
     if (cfg) _cfg = cfg;
     if (host.size.width <= 1.0) return NO;

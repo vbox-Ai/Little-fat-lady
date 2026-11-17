@@ -42,7 +42,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)stepWithDt:(CFTimeInterval)dt
             others:(NSArray<NSValue *> *)others
               host:(CGRect)hostBounds
-            config:(NSDictionary *)cfg;
+            config:(nullable NSDictionary *)cfg;   // nil = 沿用建实例时那份配置
 
 /// 停掉播放（不销毁视图），用于「关掉多开」时平滑退场。
 - (void)pause;
