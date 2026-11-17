@@ -4,6 +4,7 @@
 #import "DSHPetOverlay.h"
 #import "DSHPetBubble.h"
 #import "DSHPetBridge.h"
+#import "DSHPetHaptics.h"
 #import <CoreMotion/CoreMotion.h>
 #import "DSHPetPlayer.h"
 #import "DSHPetAnimator.h"
@@ -245,6 +246,13 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     [root.view addSubview:_box];
     _window.touchTarget = _box;
 
+    // S5：触感总开关 + 力度档（默认开、标准）
+    NSDictionary *phc = _cfg[@"physics"];
+    BOOL hapticOn = phc[@"hapticEnabled"] ? [phc[@"hapticEnabled"] boolValue] : YES;
+    NSString *hapticLevel = [phc[@"hapticLevel"] isKindOfClass:[NSString class]] ? phc[@"hapticLevel"] : @"normal";
+    [[DSHPetHaptics shared] setEnabled:hapticOn];
+    [[DSHPetHaptics shared] setLevel:hapticLevel];
+
     [self setupBubbleInRoot:root.view];
 
     // S3：有素材就把方块换成 HEVC-alpha 视频；没素材保持方块当占位。
@@ -410,6 +418,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 #pragma mark 交互
 
 - (void)onTap:(UITapGestureRecognizer *)g {
+    [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"tap" minInterval:0.10];
     [[DSHPetAnimator shared] handleTap];
     NSInteger taps = [_cfg[@"taps"] integerValue] + 1;
     _cfg[@"taps"] = @(taps);
@@ -472,6 +481,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 - (void)onPan:(UIPanGestureRecognizer *)g {
     if (g.state == UIGestureRecognizerStateBegan) {
+        [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"drag" minInterval:0.12];
         [[DSHPetAnimator shared] handleDragBegin];
         [self stopPhysics];
         _panStartCenter = _box.center;
@@ -505,6 +515,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         if (speed < 250.0) { v = _vel; speed = hypot(v.x, v.y); }
         if (speed > 2400.0 && speed > 0) { v.x *= 2400.0 / speed; v.y *= 2400.0 / speed; }
         if (speed > 250.0) {
+            [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"throw" minInterval:0.15];
             [self startPhysicsWithVelocity:v];
         } else {
             [self clampAndPersist];
@@ -590,14 +601,28 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
         CGFloat rest = [self physRestitution];
 
-        if (c.x < minX) { c.x = minX; _vel.x = -_vel.x * rest; }
-        if (c.x > maxX) { c.x = maxX; _vel.x = -_vel.x * rest; }
-        if (c.y < minY) { c.y = minY; _vel.y = -_vel.y * rest; }
+        // 撞边反馈：速度 > 300pt/s 才算"撞"，轻碰不震（方案 §S5 手势矩阵）
+        if (c.x < minX) {
+            c.x = minX;
+            if (fabs(_vel.x) > 300.0) [[DSHPetHaptics shared] fire:DSHPetHapticHeavy key:@"wall" minInterval:0.10];
+            _vel.x = -_vel.x * rest;
+        }
+        if (c.x > maxX) {
+            c.x = maxX;
+            if (fabs(_vel.x) > 300.0) [[DSHPetHaptics shared] fire:DSHPetHapticHeavy key:@"wall" minInterval:0.10];
+            _vel.x = -_vel.x * rest;
+        }
+        if (c.y < minY) {
+            c.y = minY;
+            if (fabs(_vel.y) > 300.0) [[DSHPetHaptics shared] fire:DSHPetHapticHeavy key:@"wall" minInterval:0.10];
+            _vel.y = -_vel.y * rest;
+        }
 
         BOOL onFloor = NO;
         if (c.y > maxY) {
             c.y = maxY;
             onFloor = YES;
+            if (_vel.y > 300.0) [[DSHPetHaptics shared] fire:DSHPetHapticMedium key:@"land" minInterval:0.12];
             if (_vel.y > 0) _vel.y = -_vel.y * rest;
             // 地面摩擦
             CGFloat fr = 1.0 - 2.5 * h;

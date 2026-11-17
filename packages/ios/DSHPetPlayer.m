@@ -366,11 +366,20 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     CGFloat sc = [UIScreen mainScreen].scale;
     if (sc < 1.0) sc = 2.0;
 
-    // 1:1 直出：图层尺寸 = 图像像素 / 屏幕 scale，position 对齐到整像素，
-    // 这样 CA 既不用缩放也不用重采样，任何一帧都不会糊。
-    // 关键：position 必须落在 1/scale 的整数倍上，否则合成器仍会重采样。
-    CGFloat w = imgW / sc;
-    CGFloat h = imgH / sc;
+    // 绘制策略：**按宠物框铺满，但绝不超过 1:1**。
+    //  - 框比画布小（默认 130pt vs 390px 画布）→ 缩小采样，CA 的降采样质量好，锐。
+    //  - 框比画布大 → 夹在 1:1 上限，宁可宠物比框小一点，也不许放大（放大必糊）。
+    // 关键：尺寸和 position 都落在 1/scale 的整数倍上，否则合成器仍会重采样。
+    CGFloat maxW = imgW / sc;
+    CGFloat maxH = imgH / sc;
+    CGFloat boxW = CGRectGetWidth(box);
+    CGFloat boxH = CGRectGetHeight(box);
+    CGFloat w = boxW < maxW ? boxW : maxW;
+    CGFloat h = w * (imgH / imgW);
+    if (h > boxH) { h = boxH; w = h * (imgW / imgH); }
+    if (w > maxW) { w = maxW; h = w * (imgH / imgW); }
+    w = round(w * sc) / sc;
+    h = round(h * sc) / sc;
 
     CGFloat cx = CGRectGetMidX(box);
     CGFloat cy = CGRectGetMidY(box);
@@ -646,7 +655,10 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     // 之前每 tick 才 CGImageSourceCreateImageAtIndex，CA 拿到的是还没来得及解码的代理位图，
     // 真机表现就是"偶发模糊、过一下又清楚"。这里用 ShouldCacheImmediately 强制解码完。
     // 300px 宽、每帧约 360KB，一段 40 帧 ≈ 14MB，只保留当前这一段，可接受。
-    size_t cap = n > 120 ? 120 : n;
+    // 上限 256 帧：512px 素材 121 帧 × 590KB ≈ 71MB，只留当前这一段。
+    // 早期写 120 —— 121 帧的片段会被砍掉最后一帧（循环时跳一下），
+    // 且超长片段的后半段若走懒解码就回落到低清代理。这里一次解干净。
+    size_t cap = n > 256 ? 256 : n;
     NSMutableArray *frames = [NSMutableArray arrayWithCapacity:cap];
     NSDictionary *opts = @{ (id)kCGImageSourceShouldCacheImmediately : @YES,
                             (id)kCGImageSourceShouldAllowFloat : @NO };
@@ -696,7 +708,14 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         [_link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
     }
     DSHPetLog(@"player", @"webp-ok", @"info", @{ @"file": url.lastPathComponent ?: @"",
-        @"frames": @(_webpCount), @"dur": @(_webpDur) });
+        @"frames": @(_webpCount), @"decoded": @(frames.count),
+        @"dur": @(_webpDur),
+        @"mb": @(round((double)frames.count * (double)(CGImageGetBytesPerRow((__bridge CGImageRef)frames.lastObject) * CGImageGetHeight((__bridge CGImageRef)frames.lastObject)) / 1048576.0 * 10.0) / 10.0) });
+    // 帧数与源文件帧数不一致会表现为"循环时跳帧"，单独标出来
+    if (frames.count != n) {
+        DSHPetLog(@"player", @"webp-truncated", @"warn", @{ @"file": url.lastPathComponent ?: @"",
+            @"src": @(n), @"decoded": @(frames.count) });
+    }
     return YES;
 }
 
