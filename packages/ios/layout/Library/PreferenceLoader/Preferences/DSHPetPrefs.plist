@@ -1,0 +1,7 @@
+{
+	entry = {
+		bundle = DSHPetPrefs;
+		cell = PSLinkCell;
+		label = 小肥娘;
+	};
+}

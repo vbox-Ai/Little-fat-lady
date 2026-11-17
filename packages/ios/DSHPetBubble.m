@@ -12,7 +12,28 @@ static const CGFloat kBubbleGap = 8.0;
 @property (nonatomic, strong) NSTimer *hideTimer;
 @property (nonatomic, assign) CGRect petFrame;
 @property (nonatomic, assign) UIEdgeInsets safeInsets;
+@property (nonatomic, copy) NSString *fullText;   // S6b：展开用全文
+@property (nonatomic, assign) BOOL expanded;      // 已展开（不再自动收）
+@property (nonatomic, assign) BOOL expandable;    // 三行装不下 → 可点击展开
 @end
+
+// S6b 文本清洗：宿主那边可能是多行 markdown/日志，
+// 换行合并成空格、连续空白压成一个、去掉零宽字符；超长截断到 240 字，
+// 免得一条长日志把气泡撑到半屏、也免得 UILabel 排版卡主线程。
+static NSString *DSHPetCleanBubbleText(NSString *raw) {
+    if (![raw isKindOfClass:[NSString class]] || !raw.length) return @"";
+    NSMutableString *s = [raw mutableCopy];
+    [s replaceOccurrencesOfString:@"\r\n" withString:@"\n" options:0 range:NSMakeRange(0, s.length)];
+    [s replaceOccurrencesOfString:@"\u200b" withString:@"" options:0 range:NSMakeRange(0, s.length)];
+    [s replaceOccurrencesOfString:@"\n" withString:@" " options:0 range:NSMakeRange(0, s.length)];
+    [s replaceOccurrencesOfString:@"\t" withString:@" " options:0 range:NSMakeRange(0, s.length)];
+    while ([s rangeOfString:@"  "].location != NSNotFound) {
+        [s replaceOccurrencesOfString:@"  " withString:@" " options:0 range:NSMakeRange(0, s.length)];
+    }
+    NSString *t = [s stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (t.length > 240) t = [[t substringToIndex:240] stringByAppendingString:@"…"];
+    return t;
+}
 
 @implementation DSHPetBubble
 
@@ -50,11 +71,23 @@ static const CGFloat kBubbleGap = 8.0;
 - (BOOL)visible { return !self.hidden && self.alpha > 0.01; }
 
 - (void)showText:(NSString *)text duration:(NSTimeInterval)duration {
-    NSString *t = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSString *t = DSHPetCleanBubbleText(text);
     if (!t.length) { [self dismissAnimated:YES]; return; }
 
+    self.fullText = t;
+    self.expanded = NO;
+    self.label.numberOfLines = 3;
+    self.label.lineBreakMode = NSLineBreakByTruncatingTail;
     self.label.text = t;
     self.accessibilityLabel = t;
+    // 三行装不下才允许点开全文；短句点一下就收，符合直觉
+    CGFloat maxW = MIN(floor(CGRectGetWidth(self.host.bounds) * kBubbleMaxWidthRatio), 330.0);
+    CGFloat textW = MAX(maxW - kBubblePadH * 2.0, 40.0);
+    CGRect full = [t boundingRectWithSize:CGSizeMake(textW, 1e9)
+                                  options:NSStringDrawingUsesLineFragmentOrigin
+                               attributes:@{ NSFontAttributeName: self.label.font }
+                                  context:nil];
+    self.expandable = (full.size.height > self.label.font.lineHeight * 3.0 + 0.5);
     [self layoutBubble];
 
     [self.hideTimer invalidate];
@@ -85,6 +118,17 @@ static const CGFloat kBubbleGap = 8.0;
 }
 
 - (void)onTap {
+    // S6b：一是短句直接收；二是长句第一次点开全文并停掉自动收起计时，第二次点才收。
+    if (self.expandable && !self.expanded) {
+        self.expanded = YES;
+        self.label.numberOfLines = 0;
+        self.label.lineBreakMode = NSLineBreakByWordWrapping;
+        [self.hideTimer invalidate];
+        self.hideTimer = nil;
+        [self layoutBubble];
+        DSHPetLog(@"bubble", @"expand", @"debug", @{ @"len": @(self.fullText.length) });
+        return;
+    }
     [self dismissAnimated:YES];
 }
 
@@ -104,6 +148,13 @@ static const CGFloat kBubbleGap = 8.0;
     CGSize fit = [self.label sizeThatFits:CGSizeMake(maxW - kBubblePadH * 2.0, 1e9)];
     CGFloat textW = ceil(MIN(fit.width, maxW - kBubblePadH * 2.0));
     CGFloat textH = ceil(fit.height);
+    // 展开态再长也不许吃掉半屏以上：超了就夹到 55% 屏高并尾部省略，
+    // 否则一条超长日志会把气泡顶到状态栏、把宠物整个人盖住。
+    CGFloat maxTextH = MAX(floor(CGRectGetHeight(hostBounds) * 0.55) - kBubblePadV * 2.0, 60.0);
+    if (textH > maxTextH) {
+        textH = maxTextH;
+        self.label.lineBreakMode = NSLineBreakByTruncatingTail;
+    }
     CGFloat w = textW + kBubblePadH * 2.0;
     CGFloat h = textH + kBubblePadV * 2.0;
 

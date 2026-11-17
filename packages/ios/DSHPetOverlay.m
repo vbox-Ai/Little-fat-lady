@@ -5,6 +5,7 @@
 #import "DSHPetBubble.h"
 #import "DSHPetBridge.h"
 #import "DSHPetHaptics.h"
+#import "DSHPetPrefs.h"
 #import <CoreMotion/CoreMotion.h>
 #import "DSHPetPlayer.h"
 #import "DSHPetAnimator.h"
@@ -82,6 +83,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (void)setupBubbleInRoot:(UIView *)rootView;
 - (void)anchorBubble;
 - (NSString *)labelForWorkState:(NSString *)state;
+- (void)applyPrefsNow;
 @end
 
 @implementation DSHPetOverlay {
@@ -106,6 +108,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     BOOL _physRunning;
     CMMotionManager *_motion;
     BOOL _userSized;      // 用户捏过之后就别再自动改尺寸
+    id _prefsObs;         // S7：SpringBoard 回前台时重读设置面板
 }
 
 + (instancetype)shared {
@@ -189,6 +192,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         return YES;
     }
     _cfg = DSHPetLoadUIConfig();
+    // S7：面板（CFPreferences）优先于 ui.json，只覆盖用户可调项，不碰运行时状态。
+    if ([DSHPetPrefs applyToUIConfig:_cfg]) DSHPetSaveUIConfig(_cfg);
     if (![_cfg[@"enabled"] boolValue]) {
         DSHPetLog(@"render", @"attach-skip", @"info", @{ @"reason": @"disabled-by-config" });
         return NO;
@@ -254,6 +259,17 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     [[DSHPetHaptics shared] setLevel:hapticLevel];
 
     [self setupBubbleInRoot:root.view];
+
+    // S7：从「设置」改完面板退回桌面 → SpringBoard 回前台 → 重读设置。
+    if (!_prefsObs) {
+        __weak DSHPetOverlay *weakPrefs = self;
+        _prefsObs = [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
+                                                                     object:nil
+                                                                      queue:[NSOperationQueue mainQueue]
+                                                                 usingBlock:^(NSNotification *note) {
+            [weakPrefs applyPrefsNow];
+        }];
+    }
 
     // S3：有素材就把方块换成 HEVC-alpha 视频；没素材保持方块当占位。
     BOOL hasPet = [[DSHPetPlayer shared] attachToHostView:_box size:CGSizeMake(petW, petH)];
@@ -527,6 +543,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 - (CGFloat)physGravity {
     NSDictionary *ph = _cfg[@"physics"];
+    // S7 面板：重力总开关关掉时直接返回 0，掉落/投掷就不动了（宠物停在原地）
+    if (ph[@"gravityEnabled"] && ![ph[@"gravityEnabled"] boolValue]) return 0.0;
     CGFloat g = [ph[@"gravity"] doubleValue];
     return g > 0 ? g : 1400.0;
 }
@@ -646,10 +664,29 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     if (b.width <= 0 || b.height <= 0) return c;
     CGFloat half = MAX(_box.bounds.size.width, _box.bounds.size.height) / 2.0;
     UIEdgeInsets sa = _window.safeAreaInsets;
-    CGFloat left = MAX(20.0, sa.left + 8.0);
-    CGFloat right = MAX(20.0, sa.right + 8.0);
-    CGFloat top = MAX(40.0, sa.top + 8.0);
-    CGFloat bottom = MAX(34.0, sa.bottom + 8.0);
+    // S7 面板：贴边间距三档（0 贴紧 / 1 标准 / 2 宽松）。
+    // 缺省必须是「标准」，且标准档的数值与面板上线前的老代码逐字一致，
+    // 否则老用户升级后宠物会莫名其妙挪位置。
+    NSInteger preset = _cfg[@"edgePreset"] ? [_cfg[@"edgePreset"] integerValue] : 1;
+    if (preset < 0) preset = 0;
+    if (preset > 2) preset = 2;
+    CGFloat left, right, top, bottom;
+    if (preset == 0) {
+        left = MAX(8.0, sa.left + 4.0);
+        right = MAX(8.0, sa.right + 4.0);
+        top = MAX(40.0, sa.top + 4.0);
+        bottom = MAX(34.0, sa.bottom + 4.0);
+    } else if (preset == 2) {
+        left = MAX(40.0, sa.left + 24.0);
+        right = MAX(40.0, sa.right + 24.0);
+        top = MAX(56.0, sa.top + 24.0);
+        bottom = MAX(50.0, sa.bottom + 24.0);
+    } else {
+        left = MAX(20.0, sa.left + 8.0);
+        right = MAX(20.0, sa.right + 8.0);
+        top = MAX(40.0, sa.top + 8.0);
+        bottom = MAX(34.0, sa.bottom + 8.0);
+    }
 
     CGFloat minX = left + half, maxX = b.width - right - half;
     CGFloat minY = top + half, maxY = b.height - bottom - half;
@@ -664,6 +701,47 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 - (void)saveConfig {
     [_cfg writeToFile:kUIConfigPath atomically:YES];
+}
+
+// S7：设置面板改完回桌面时重新读一遍。
+// 为什么不做 Darwin 通知热更新：plist-only 面板没有可执行文件，发不出通知；
+// 而 Settings 退出时 SpringBoard 会收到 did-become-active，这个时机足够准，也不用常驻定时器。
+- (void)applyPrefsNow {
+    if (!_cfg) return;
+    NSMutableDictionary *fresh = DSHPetLoadUIConfig();
+    BOOL changed = [DSHPetPrefs applyToUIConfig:fresh];
+    // 运行时状态以内存为准（面板不管这些键，别让磁盘上的旧值把它们盖回去）
+    for (NSString *k in @[@"centerX", @"centerY", @"taps", @"sizeRatio", @"sizeManual", @"windowLevel"]) {
+        if (_cfg[k]) fresh[k] = _cfg[k];
+    }
+    _cfg = fresh;
+    if (changed) DSHPetSaveUIConfig(_cfg);
+
+    NSDictionary *ph = _cfg[@"physics"];
+    [[DSHPetHaptics shared] setEnabled:ph[@"hapticEnabled"] ? [ph[@"hapticEnabled"] boolValue] : YES];
+    [[DSHPetHaptics shared] setLevel:[ph[@"hapticLevel"] isKindOfClass:[NSString class]] ? ph[@"hapticLevel"] : @"normal"];
+
+    // 宠物总开关：关掉只隐藏，不拆窗口——免得再开时又要等 scene 重挂
+    BOOL petOn = _cfg[@"enabled"] ? [_cfg[@"enabled"] boolValue] : YES;
+    [self setLayerVisible:petOn];
+
+    // 连接：开关或地址变了就重启轮询（stop 是幂等的）
+    BOOL bridgeOn = _cfg[@"bridgeEnabled"] ? [_cfg[@"bridgeEnabled"] boolValue] : YES;
+    NSString *base = [_cfg[@"bridgeBase"] isKindOfClass:[NSString class]] ? _cfg[@"bridgeBase"] : nil;
+    if (!base.length) base = @"https://dsh.vbox.ltd:42429";
+    NSTimeInterval iv = _cfg[@"bridgeInterval"] ? [_cfg[@"bridgeInterval"] doubleValue] : 2.5;
+    NSString *token = [_cfg[@"bridgeToken"] isKindOfClass:[NSString class]] ? _cfg[@"bridgeToken"] : @"";
+    if (bridgeOn) {
+        [[DSHPetBridge shared] startWithBase:base token:token interval:iv];
+    } else {
+        [[DSHPetBridge shared] stop];
+    }
+
+    // 贴边间距档可能变了：立刻按新档重新夹一次，别等下次拖拽
+    if (_box && _window) [self relayoutAndSettle:NO];
+    DSHPetLog(@"prefs", @"reload", @"info", @{ @"pet": @(petOn), @"bridge": @(bridgeOn),
+                                                @"edge": _cfg[@"edgePreset"] ?: @"(default)",
+                                                @"changed": @(changed) });
 }
 
 - (void)clampAndPersist {

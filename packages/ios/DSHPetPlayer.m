@@ -696,7 +696,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         _naturalSize = CGSizeMake(CGImageGetWidth((__bridge CGImageRef)firstObj),
                                   CGImageGetHeight((__bridge CGImageRef)firstObj));
         [self layoutContentsForImage:(__bridge CGImageRef)firstObj];
-        self.contentLayer.contents = (__bridge id)firstObj;
+        self.contentLayer.contents = firstObj;   // firstObj 已是 id，不能再 __bridge
         _compositeReady = YES;   // 第 0 帧已上屏，naturalSize 立即可用
     }
 
