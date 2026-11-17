@@ -106,6 +106,15 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
             if ([n.lowercaseString containsString:@"/main."]) { picked = n; break; }
         }
     }
+    // 分桶素材优先于平铺文件：平铺的是早期演示片（320x314，方形画布），
+    // 被放进 130pt 宿主里等于放大 1.4 倍 —— 真机"待机时糊一下"就是抽到它。
+    if (!picked && deep.count) {
+        NSArray<NSString *> *sorted = [deep sortedArrayUsingSelector:@selector(compare:)];
+        for (NSString *n in sorted) {
+            if ([n.lowercaseString hasPrefix:@"idle/"]) { picked = n; break; }
+        }
+        if (!picked) picked = sorted.firstObject;
+    }
     if (!picked) {
         for (NSString *n in top) {
             if (![n.lowercaseString isEqualToString:@"demo.mov"]) { picked = n; break; }
@@ -600,10 +609,10 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     id img = _webpFrames[(NSUInteger)next];
     _webpIndex = next;
     _webpNext = now + (_webpDur > 0.01 ? _webpDur : (1.0 / 12.0));
-    if (_naturalSize.width < 1) {
-        _naturalSize = CGSizeMake(CGImageGetWidth((__bridge CGImageRef)img),
-                                  CGImageGetHeight((__bridge CGImageRef)img));
-    }
+    // 每帧同步真实像素尺寸：素材包里 300/360/390px 混放，
+    // 只在首次赋值会让宿主比例一直按最早那段算（偏窄 + 被放大 → 看着糊）。
+    _naturalSize = CGSizeMake(CGImageGetWidth((__bridge CGImageRef)img),
+                              CGImageGetHeight((__bridge CGImageRef)img));
     _curFrame = img;
     [self layoutContentsForImage:(__bridge CGImageRef)img];
     self.contentLayer.contents = img;

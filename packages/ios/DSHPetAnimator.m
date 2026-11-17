@@ -110,6 +110,26 @@ static NSString *const kCatOther = @"other";
     NSFileManager *fm = [NSFileManager defaultManager];
     NSArray<NSString *> *names = [fm contentsOfDirectoryAtPath:scanDir error:NULL] ?: @[];
 
+    // 先探一遍：只要存在"装着媒体的子目录"（分桶素材），就完全忽略同级的平铺文件。
+    // 平铺那些是 0.1.0-31 时代的演示片（320x314），和真素材混在一个类别里轮播，
+    // 抽到它就会被放大 1.4 倍 —— 真机上表现为"待机时偶尔糊一下，过会儿又清楚"。
+    BOOL hasBuckets = NO;
+    for (NSString *n in names) {
+        BOOL d = NO;
+        NSString *full = [scanDir stringByAppendingPathComponent:n];
+        if ([fm fileExistsAtPath:full isDirectory:&d] && d) {
+            NSArray<NSString *> *inner = [fm contentsOfDirectoryAtPath:full error:NULL] ?: @[];
+            for (NSString *m in inner) {
+                NSString *ml = m.lowercaseString;
+                if ([ml hasSuffix:@".mov"] || [ml hasSuffix:@".mp4"] || [ml hasSuffix:@".m4v"] || [ml hasSuffix:@".webp"]) {
+                    hasBuckets = YES;
+                    break;
+                }
+            }
+        }
+        if (hasBuckets) break;
+    }
+
     for (NSString *n in [names sortedArrayUsingSelector:@selector(compare:)]) {
         NSString *full = [scanDir stringByAppendingPathComponent:n];
         BOOL isDir = NO;
@@ -125,6 +145,7 @@ static NSString *const kCatOther = @"other";
             }
             continue;
         }
+        if (hasBuckets) continue;   // 有分桶就不索引平铺占位片
         NSString *low = n.lowercaseString;
         if (!([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"] || [low hasSuffix:@".webp"])) continue;
         NSString *cat = [self categoryForFile:n];
