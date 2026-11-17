@@ -1,6 +1,6 @@
 #import "DSHPetHaptics.h"
 #import <UIKit/UIKit.h>
-#include "DSHPetLog.h"
+#import "DSHPetBoot.h"
 
 @implementation DSHPetHaptics {
     BOOL _enabled;
