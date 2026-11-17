@@ -371,7 +371,6 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     //  - 框比画布大 → 夹在 1:1 上限，宁可宠物比框小一点，也不许放大（放大必糊）。
     // 关键：尺寸和 position 都落在 1/scale 的整数倍上，否则合成器仍会重采样。
     CGFloat maxW = imgW / sc;
-    CGFloat maxH = imgH / sc;
     CGFloat boxW = CGRectGetWidth(box);
     CGFloat boxH = CGRectGetHeight(box);
     CGFloat w = boxW < maxW ? boxW : maxW;
