@@ -2,6 +2,8 @@
 #import <QuartzCore/QuartzCore.h>
 #import "DSHPetBoot.h"
 #import "DSHPetOverlay.h"
+#import "DSHPetBubble.h"
+#import "DSHPetBridge.h"
 #import <CoreMotion/CoreMotion.h>
 #import "DSHPetPlayer.h"
 #import "DSHPetAnimator.h"
@@ -76,6 +78,9 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (void)onOrientationChange:(NSNotification *)n;
 - (void)setLayerVisible:(BOOL)visible;
 - (void)hideBoxChrome;
+- (void)setupBubbleInRoot:(UIView *)rootView;
+- (void)anchorBubble;
+- (NSString *)labelForWorkState:(NSString *)state;
 @end
 
 @implementation DSHPetOverlay {
@@ -83,6 +88,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     UIWindowScene *_scene;
     DSHPetWindow *_window;
     UIView *_box;
+    DSHPetBubble *_bubble;
+    BOOL _bubbleReady;
     NSMutableDictionary *_cfg;
     CGPoint _panStartCenter;
     UIInterfaceOrientation _lastInterfaceOrient;
@@ -113,6 +120,66 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         return NO;
     }
     return [[self shared] attachToScene:scene];
+}
+
+- (void)setupBubbleInRoot:(UIView *)rootView {
+    if (_bubbleReady) return;
+    _bubbleReady = YES;
+
+    _bubble = [[DSHPetBubble alloc] initWithHostView:rootView];
+
+    __weak DSHPetOverlay *weakSelf = self;
+    [[NSNotificationCenter defaultCenter] addObserverForName:DSHPetSayNotification
+                                                     object:nil
+                                                      queue:[NSOperationQueue mainQueue]
+                                                 usingBlock:^(NSNotification *note) {
+        DSHPetOverlay *me = weakSelf;
+        if (!me) return;
+        NSString *text = note.userInfo[@"text"];
+        if (![text isKindOfClass:[NSString class]] || !text.length) return;
+        if (me->_cfg[@"bubbleEnabled"] && ![me->_cfg[@"bubbleEnabled"] boolValue]) return;
+        [me->_bubble showText:text duration:6.5];
+        [me anchorBubble];
+    }];
+    [[NSNotificationCenter defaultCenter] addObserverForName:DSHPetStatusNotification
+                                                     object:nil
+                                                      queue:[NSOperationQueue mainQueue]
+                                                 usingBlock:^(NSNotification *note) {
+        DSHPetOverlay *me = weakSelf;
+        if (!me) return;
+        if (![me->_cfg[@"bubbleStatusEnabled"] boolValue]) return;
+        NSString *st = note.userInfo[@"state"];
+        if (![st isKindOfClass:[NSString class]] || !st.length) return;
+        [me->_bubble showText:[me labelForWorkState:st] duration:4.0];
+        [me anchorBubble];
+    }];
+
+    NSString *base = _cfg[@"bridgeBase"];
+    if (![base isKindOfClass:[NSString class]] || !base.length) base = @"https://dsh.vbox.ltd:42429";
+    BOOL enabled = _cfg[@"bridgeEnabled"] ? [_cfg[@"bridgeEnabled"] boolValue] : YES;
+    if (enabled) {
+        NSTimeInterval iv = _cfg[@"bridgeInterval"] ? [_cfg[@"bridgeInterval"] doubleValue] : 2.5;
+        NSString *token = [_cfg[@"bridgeToken"] isKindOfClass:[NSString class]] ? _cfg[@"bridgeToken"] : @"";
+        [[DSHPetBridge shared] startWithBase:base token:token interval:iv];
+    }
+    DSHPetLog(@"bubble", @"ready", @"info", @{ @"bridge": enabled ? base : @"off" });
+}
+
+- (NSString *)labelForWorkState:(NSString *)state {
+    if ([state isEqualToString:@"working"]) return @"干活中…";
+    if ([state isEqualToString:@"thinking"]) return @"在想…";
+    if ([state isEqualToString:@"idle"]) return @"闲着呢";
+    return state;
+}
+
+- (void)anchorBubble {
+    if (!_bubble || !_box) return;
+    UIView *host = _box.superview;
+    if (!host) return;
+    UIEdgeInsets insets = UIEdgeInsetsZero;
+    if (@available(iOS 11.0, *)) insets = host.safeAreaInsets;
+    CGRect petInHost = [_box convertRect:_box.bounds toView:host];
+    [_bubble anchorAtPetFrame:petInHost hostBounds:host.bounds safeInsets:insets];
 }
 
 - (BOOL)attachToScene:(UIWindowScene *)scene {
@@ -177,6 +244,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     _box.userInteractionEnabled = YES;
     [root.view addSubview:_box];
     _window.touchTarget = _box;
+
+    [self setupBubbleInRoot:root.view];
 
     // S3：有素材就把方块换成 HEVC-alpha 视频；没素材保持方块当占位。
     BOOL hasPet = [[DSHPetPlayer shared] attachToHostView:_box size:CGSizeMake(petW, petH)];
