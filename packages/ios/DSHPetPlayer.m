@@ -386,6 +386,13 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     [CATransaction commit];
 }
 
+- (void)refreshLayout {
+    // 宿主尺寸变了（捏合/旋转/换屏）→ 立刻按当前帧重排，别等下一帧动画推进
+    if (_curFrame) {
+        [self layoutContentsForImage:(__bridge CGImageRef)_curFrame];
+    }
+}
+
 - (BOOL)isReady {
     if (_compositeReady) return YES;
     AVPlayerItem *item = _player.currentItem;
