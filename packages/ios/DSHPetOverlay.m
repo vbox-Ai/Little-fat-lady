@@ -126,6 +126,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         return NO;
     }
 
+    // 尺寸归属：捏过就永不被自动 1:1 覆盖（注销/重启都算）
+    _userSized = [_cfg[@"sizeManual"] boolValue];
     _scene = scene;
     _lastInterfaceOrient = scene.interfaceOrientation;
     _window = [[DSHPetWindow alloc] initWithWindowScene:scene];
@@ -199,12 +201,20 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
             _firstFrameObs = nil;
         }
         // 首帧尺寸对齐：图像宽 / 屏幕 scale，正好 1:1，不缩放就不会糊
+        // 三档优先级（顺序不可换）：
+        //  1) sizeManual=YES（用户捏过）→ 用保存的宽度，注销/重启都不许改；
+        //  2) 没捏过 → 按素材原始像素 1:1 定宽（图像宽 / 屏幕 scale），不缩放就不糊；
+        //  3) 拿不到素材 → 保持按屏宽算的初值。
+        // 之前漏了第 1 档：_userSized 每次启动都是 false，注销后就被第 2 档压回 130pt，
+        // 真机表现就是"放大之后注销又变小"。
         if (!_userSized) {
             CGSize nat0 = [[DSHPetPlayer shared] naturalSize];
             CGFloat scr0 = [UIScreen mainScreen].scale > 0 ? [UIScreen mainScreen].scale : 3.0;
             if (nat0.width > 1.0) {
                 [self applyPetWidth:round(nat0.width) / scr0];
             }
+        } else {
+            [self applyPetWidth:_box.frame.size.width];
         }
         _firstFrameObs = [[NSNotificationCenter defaultCenter] addObserverForName:@"DSHPetFirstFrame"
                                                                            object:nil
@@ -356,6 +366,9 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         CGFloat ratio = CGRectGetWidth(_box.bounds) / CGRectGetWidth([UIScreen mainScreen].bounds);
         _cfg[@"size"] = @(round(CGRectGetWidth(_box.bounds)));
         _cfg[@"sizeRatio"] = @(round(ratio * 1000.0) / 1000.0);
+        // 关键：把"这个尺寸是人定的"也存下来。只存 size 不存归属，
+        // 下次启动就分不清"用户捏的 118pt"和"默认没配过"，自动 1:1 会把它覆盖掉。
+        _cfg[@"sizeManual"] = @YES;
         [self saveConfig];
         DSHPetLog(@"render", @"pet-resize", @"info", @{ @"w": @(round(CGRectGetWidth(_box.bounds))), @"ratio": @(ratio) });
     }
@@ -381,6 +394,11 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
     [[DSHPetPlayer shared] setDisplaySize:CGSizeMake(w, h)];
     [[DSHPetPlayer shared] refreshLayout];   // 尺寸变了立刻按当前帧重排，别等下一帧
+
+    // 记住尺寸本身（是否"用户捏的"由 onPinch 那边置 sizeManual，别在这里判断）
+    _cfg[@"size"] = @(w);
+    _cfg[@"sizeRatio"] = @(w / MAX(scrW, 1.0));
+    DSHPetSaveUIConfig(_cfg);
 }
 
 - (void)onPan:(UIPanGestureRecognizer *)g {

@@ -184,7 +184,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         _contentLayer = [CALayer layer];
         _contentLayer.opaque = NO;
         _contentLayer.backgroundColor = [UIColor clearColor].CGColor;
-        _contentLayer.contentsGravity = kCAGravityResize;
+        _contentLayer.contentsGravity = kCAGravityResizeAspect;
         _contentLayer.magnificationFilter = kCAFilterLinear;
         _contentLayer.minificationFilter = kCAFilterLinear;
     }
@@ -372,7 +372,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     self.contentLayer.frame = rect;
-    self.contentLayer.contentsGravity = kCAGravityResize;
+    self.contentLayer.contentsGravity = kCAGravityResizeAspect;
     self.contentLayer.contentsScale = imgW / MAX(w, 1.0);
     [CATransaction commit];
 }
@@ -668,7 +668,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         self.contentLayer = [CALayer layer];
         self.contentLayer.opaque = NO;
         self.contentLayer.backgroundColor = [UIColor clearColor].CGColor;
-        self.contentLayer.contentsGravity = kCAGravityResize;
+        self.contentLayer.contentsGravity = kCAGravityResizeAspect;
         self.contentLayer.allowsGroupOpacity = NO;
         self.contentLayer.shouldRasterize = NO;
         // 帧像素 >= 显示像素时才锐：常驻动作按 360px 出图（118pt @3x ≈ 354px），
