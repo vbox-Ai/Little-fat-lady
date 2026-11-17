@@ -355,6 +355,9 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     if (CGRectGetWidth(box) < 1.0 || CGRectGetHeight(box) < 1.0) return;
 
     CGFloat scaleFit = MIN(CGRectGetWidth(box) / imgW, CGRectGetHeight(box) / imgH);
+    // 只许缩、不许放：放大就是把像素摊开，必然糊。母版 390px 在 3x 屏上正好 1:1。
+    CGFloat maxScale = 1.0 / MAX([UIScreen mainScreen].scale, 1.0);
+    if (scaleFit > maxScale) scaleFit = maxScale;
     CGFloat w = imgW * scaleFit;
     CGFloat h = imgH * scaleFit;
 
@@ -475,6 +478,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     if (CGSizeEqualToSize(size, _displaySize)) return;
     _displaySize = size;
     [self syncLayerFrame];
+    [self refreshLayout];
 }
 
 - (void)syncLayerFrame {
@@ -491,6 +495,11 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     if (_layer) _layer.frame = b;
     if (_contentLayer) _contentLayer.frame = b;
     [CATransaction commit];
+
+    // 关键：frame 铺满宿主后必须按图像比例重新 fit。
+    // 只铺不收的话，contentsGravity=Resize 会按图层比例拉伸——这就是"注销后拉长、
+    // 捏一下又好了"的真因（pinch 走 applyPetWidth → refreshLayout 才重算 rect）。
+    if (_curFrame) [self layoutContentsForImage:(__bridge CGImageRef)_curFrame];
 }
 
 - (void)play {
