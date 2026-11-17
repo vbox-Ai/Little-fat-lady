@@ -86,6 +86,27 @@ static NSString *const kCatOther = @"other";
         for (NSString *k in picked) self.groups[k] = [picked[k] mutableCopy];
     }
 
+    // 只要索引里出现 webp（当前引擎），就把 .mp4/.mov 全部丢掉。
+    // 它们是 0.1.0-63~84 时期"彩色 + 蒙版双路"留下的 320x180 演示片：
+    // 尺寸只有 320px，塞进 130pt(=390px) 宿主会放大 1.22 倍 —— 真机"偶尔发虚"。
+    BOOL hasWebP = NO;
+    for (NSString *k in self.groups) {
+        for (NSString *p in self.groups[k]) {
+            if ([p.lowercaseString hasSuffix:@".webp"]) { hasWebP = YES; break; }
+        }
+        if (hasWebP) break;
+    }
+    if (hasWebP) {
+        NSArray<NSString *> *keys = [self.groups allKeys];
+        for (NSString *k in keys) {
+            NSMutableArray *keep = [NSMutableArray array];
+            for (NSString *p in self.groups[k]) {
+                if ([p.lowercaseString hasSuffix:@".webp"]) [keep addObject:p];
+            }
+            if (keep.count) self.groups[k] = keep; else [self.groups removeObjectForKey:k];
+        }
+    }
+
     NSMutableDictionary *counts = [NSMutableDictionary dictionary];
     for (NSString *k in self.groups) counts[k] = @(self.groups[k].count);
     // 每个候选根实际扫到几段：真机日志里这一项能直接判定"路径对不对"
