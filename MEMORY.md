@@ -99,3 +99,5 @@
 - 图层矩形必须跟宿主尺寸同步：`contentsGravity=Resize` 下，宿主变了不重算 rect 就会**拉长**（0.1.0-94/97 真机现象），改尺寸后立刻 `refreshLayout`。
 - iOS 原生能震也能感知倾斜：`AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)` / `UIImpactFeedbackGenerator` / `CoreMotion`；上游说的"iOS 不生效"只针对 Web 的 `navigator.vibrate`。
 - `contentsGravity=Resize` 下任何「把 frame 铺满宿主」的动作（`syncLayerFrame`/`setDisplaySize`）之后都必须按图像比例重算 rect，否则注销重建窗口就会拉长——pinch 能修好正说明是这条没做。
+- 尺寸归属要落盘：只存 `size` 不存 `sizeManual`，下次启动就分不清「用户捏的」和「没配过」，自动 1:1 会覆盖它——真机表现为放大后注销又变小。
+- `contentsGravity` 一律用 `ResizeAspect`：`Resize` 在任何一帧矩形算错时都会**当场拉伸**，属于结构性隐患。
