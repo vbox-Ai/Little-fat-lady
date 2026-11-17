@@ -101,3 +101,5 @@
 - `contentsGravity=Resize` 下任何「把 frame 铺满宿主」的动作（`syncLayerFrame`/`setDisplaySize`）之后都必须按图像比例重算 rect，否则注销重建窗口就会拉长——pinch 能修好正说明是这条没做。
 - 尺寸归属要落盘：只存 `size` 不存 `sizeManual`，下次启动就分不清「用户捏的」和「没配过」，自动 1:1 会覆盖它——真机表现为放大后注销又变小。
 - `contentsGravity` 一律用 `ResizeAspect`：`Resize` 在任何一帧矩形算错时都会**当场拉伸**，属于结构性隐患。
+- 有分桶素材时必须忽略同级平铺文件：0.1.0-31 的演示片是 320×314 方形画布，混进 idle 类别被抽中就会放大 1.4 倍显糊（真机「待机偶发模糊」根因）。
+- `naturalSize` 要每帧同步：只在首次赋值会让宿主比例锁死最早那段素材。
