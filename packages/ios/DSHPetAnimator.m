@@ -74,10 +74,24 @@ static NSString *const kCatOther = @"other";
         NSUInteger n = 0;
         for (NSString *k in self.groups) n += self.groups[k].count;
         perRoot[scanDir] = [self.groups copy] ?: @{};
-        // 带 color/ 的根是"彩色+蒙版"新素材，优先级压过旧的单路 .mov 包：
-        // 旧包没 alpha，播上去就是一块黑底。
+        // 打分三档，顺序不能换：
+        //   ① 这个根里有没有 webp —— 有就压过一切。webp 是当前引擎，唯一带真 alpha 且 512px；
+        //   ② 其次才是老的 color/ 根（320×180 双路演示片，尺寸不够，必糊）;
+        //   ③ 最后比段数。
+        // 老实现是「color 根 +100000」无条件压过 webp 根 —— 只要历史上装过一次双路版本，
+        // 残留的 color/*.mp4 就永久夺走选片权，现象是「某些动作一直发虚」，
+        // 而且：删掉 color/ 目录立刻恢复。这就是 0.1.0-104~114 的真凶。
+        BOOL rootHasWebP = NO;
+        for (NSString *k in self.groups) {
+            for (NSString *p in self.groups[k]) {
+                if ([p.lowercaseString hasSuffix:@".webp"]) { rootHasWebP = YES; break; }
+            }
+            if (rootHasWebP) break;
+        }
         BOOL isColorRoot = [[scanDir lastPathComponent] isEqualToString:@"color"];
-        NSUInteger score = n + (isColorRoot ? 100000 : 0);
+        NSUInteger score = n;
+        if (rootHasWebP) score += 1000000;
+        else if (isColorRoot) score += 1000;
         if (score > bestCount) { bestCount = score; bestDir = scanDir; }
     }
     [self.groups removeAllObjects];

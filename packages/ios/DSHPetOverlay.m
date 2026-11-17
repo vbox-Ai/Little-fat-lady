@@ -194,6 +194,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     _cfg = DSHPetLoadUIConfig();
     // S7：面板（CFPreferences）优先于 ui.json，只覆盖用户可调项，不碰运行时状态。
     if ([DSHPetPrefs applyToUIConfig:_cfg]) DSHPetSaveUIConfig(_cfg);
+    [DSHPetPrefs stampVersion:DSHPET_VERSION_STRING];   // 面板「关于 → 版本」显示真实版本
     if (![_cfg[@"enabled"] boolValue]) {
         DSHPetLog(@"render", @"attach-skip", @"info", @{ @"reason": @"disabled-by-config" });
         return NO;

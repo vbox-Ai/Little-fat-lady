@@ -62,6 +62,19 @@ static NSString *const kPrefsFileDirect = @"/var/mobile/Library/Preferences/com.
     return fb;
 }
 
++ (void)stampVersion:(NSString *)version {
+    if (!version.length) return;
+    CFStringRef domain = (__bridge CFStringRef)kPrefsDomainBundle;
+    CFPropertyListRef old = CFPreferencesCopyAppValue(CFSTR("installedVersion"), domain);
+    NSString *oldStr = old ? CFBridgingRelease(old) : nil;
+    if ([oldStr isEqualToString:version]) return;
+    CFPreferencesSetAppValue(CFSTR("installedVersion"),
+                             (__bridge CFPropertyListRef)version,
+                             domain);
+    CFPreferencesAppSynchronize(domain);
+    DSHPetLog(@"prefs", @"stamp-version", @"info", @{ @"ver": version });
+}
+
 + (BOOL)applyToUIConfig:(NSMutableDictionary *)cfg {
     if (!cfg) return NO;
     BOOL changed = NO;

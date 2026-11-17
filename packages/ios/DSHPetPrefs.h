@@ -19,4 +19,9 @@
 // 把面板里已设置的值合并进 cfg（就地改），返回是否发生了变化。
 + (BOOL)applyToUIConfig:(NSMutableDictionary *)cfg;
 
+// 把当前安装版本号写进面板域，让「设置 → 小肥娘 → 关于 → 版本」显示真实版本。
+// 为什么不在打包时改 Root.plist：deb 里 plist 是死的，写死就会和实际装的版本对不上；
+// 由 SpringBoard 启动时盖章，永远与二进制一致。
++ (void)stampVersion:(NSString *)version;
+
 @end
