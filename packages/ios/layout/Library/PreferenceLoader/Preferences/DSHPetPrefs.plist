@@ -2,6 +2,8 @@
 	entry = {
 		bundle = DSHPetPrefs;
 		cell = PSLinkCell;
+		detail = PSListController;
+		isController = 1;
 		label = 小肥娘;
 	};
 }

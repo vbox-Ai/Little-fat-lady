@@ -101,6 +101,16 @@ static NSString *const kPrefsFileDirect = @"/var/mobile/Library/Preferences/com.
         if ([cfg[@"edgePreset"] integerValue] != preset) { cfg[@"edgePreset"] = @(preset); changed = YES; }
     }
 
+    // —— 尺寸：面板滑块是「用户明确表态」，所以这里破例允许覆盖 sizeRatio，
+    //    并把 sizeManual 置 YES —— 否则自动 1:1 逻辑会把滑块的值又改回去。
+    if ([self hasKey:@"sizePct"]) {
+        double ratio = [self doubleForKey:@"sizePct" fallback:0.30];
+        if (ratio < 0.16) ratio = 0.16;
+        if (ratio > 0.62) ratio = 0.62;
+        if (fabs([cfg[@"sizeRatio"] doubleValue] - ratio) > 0.005) { cfg[@"sizeRatio"] = @(ratio); changed = YES; }
+        if (![cfg[@"sizeManual"] boolValue]) { cfg[@"sizeManual"] = @YES; changed = YES; }
+    }
+
     // —— 物理与触感 ——
     NSMutableDictionary *ph = [cfg[@"physics"] isKindOfClass:[NSDictionary class]]
         ? [cfg[@"physics"] mutableCopy] : [NSMutableDictionary dictionary];

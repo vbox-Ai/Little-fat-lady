@@ -58,6 +58,29 @@
 			<key>cell</key>
 			<string>PSGroupSpecifier</string>
 			<key>label</key>
+			<string>尺寸</string>
+			<key>footerText</key>
+			<string>数值 = 占屏宽的比例。往右拉是变大：素材按 512px 转码，屏宽 62% 以内仍是 1:1 像素，不会发虚；超过就靠放大，边缘会软。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSliderSpecifier</string>
+			<key>key</key>
+			<string>sizePct</string>
+			<key>defaults</key>
+			<string>com.vboxai.littlefatlady.prefs</string>
+			<key>default</key>
+			<real>0.30</real>
+			<key>min</key>
+			<real>0.16</real>
+			<key>max</key>
+			<real>0.62</real>
+		</dict>
+
+		<dict>
+			<key>cell</key>
+			<string>PSGroupSpecifier</string>
+			<key>label</key>
 			<string>物理与触感</string>
 			<key>footerText</key>
 			<string>震动：点击/拖拽轻，落地中，撞边重。「倾斜重力」开着时，手机倾斜会让宠物往低处滑。</string>

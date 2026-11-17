@@ -83,6 +83,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (void)setupBubbleInRoot:(UIView *)rootView;
 - (void)anchorBubble;
 - (NSString *)labelForWorkState:(NSString *)state;
+- (void)clampAndPersist;
+- (void)applySizeFromConfig;
 - (void)applyPrefsNow;
 @end
 
@@ -712,8 +714,15 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     NSMutableDictionary *fresh = DSHPetLoadUIConfig();
     BOOL changed = [DSHPetPrefs applyToUIConfig:fresh];
     // 运行时状态以内存为准（面板不管这些键，别让磁盘上的旧值把它们盖回去）
-    for (NSString *k in @[@"centerX", @"centerY", @"taps", @"sizeRatio", @"sizeManual", @"windowLevel"]) {
+    for (NSString *k in @[@"centerX", @"centerY", @"taps", @"windowLevel"]) {
         if (_cfg[k]) fresh[k] = _cfg[k];
+    }
+    // 尺寸有个例外：面板的滑块一旦存在，就是用户明确表态，必须让它赢；
+    // 没有滑块时才用内存值（捏合得来的）回填，免得被磁盘旧值改回去。
+    if (![DSHPetPrefs hasKey:@"sizePct"]) {
+        for (NSString *k in @[@"sizeRatio", @"sizeManual"]) {
+            if (_cfg[k]) fresh[k] = _cfg[k];
+        }
     }
     _cfg = fresh;
     if (changed) DSHPetSaveUIConfig(_cfg);
@@ -738,8 +747,17 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         [[DSHPetBridge shared] stop];
     }
 
-    // 贴边间距档可能变了：立刻按新档重新夹一次，别等下次拖拽
-    if (_box && _window) [self relayoutAndSettle:NO];
+    // 尺寸滑块：宽高变了才重排，否则每次回前台都白算一遍（还会多写一次 ui.json）
+    if (_box && _window) {
+        CGFloat scrW = CGRectGetWidth([UIScreen mainScreen].bounds);
+        CGFloat wantW = _cfg[@"sizeRatio"] ? scrW * [_cfg[@"sizeRatio"] doubleValue] : _box.bounds.size.width;
+        if (fabs(wantW - _box.bounds.size.width) > 0.5) {
+            [self applySizeFromConfig];
+        } else {
+            // 贴边间距档可能变了：立刻按新档重新夹一次，别等下次拖拽
+            [self relayoutAndSettle:NO];
+        }
+    }
     DSHPetLog(@"prefs", @"reload", @"info", @{ @"pet": @(petOn), @"bridge": @(bridgeOn),
                                                 @"edge": _cfg[@"edgePreset"] ?: @"(default)",
                                                 @"changed": @(changed) });
@@ -759,8 +777,41 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     DSHPetLog(@"render", @"drag-end", @"info", @{ @"x": @(c.x), @"y": @(c.y), @"w": @(b.width), @"h": @(b.height) });
 }
 
-- (CGRect)sceneBoundsIfValid {
-    if (!_scene) return CGRectZero;
+// S7b：尺寸滑块。attach 只在启动时算一次尺寸，面板改了以后要走这条路重算，
+// 再按新尺寸重新夹一次位置（否则宠物变大会顶出屏幕）。
+// 高度永远跟随素材真实比例：写死 2160x1215 会在不同比例素材上留大片透明边。
+- (void)applySizeFromConfig {
+    if (!_box || !_window) return;
+    CGFloat scrW = CGRectGetWidth([UIScreen mainScreen].bounds);
+    if (scrW < 1.0) return;
+    CGFloat minW = scrW * 0.16;
+    CGFloat maxW = scrW * 0.62;
+    CGFloat w = _cfg[@"sizeRatio"] ? scrW * [_cfg[@"sizeRatio"] doubleValue] : _box.bounds.size.width;
+    if (w > maxW) w = maxW;
+    if (w < minW) w = minW;
+    CGSize nat = [[DSHPetPlayer shared] naturalSize];
+    CGFloat h = (nat.width > 1.0 && nat.height > 1.0)
+        ? round(w * nat.height / nat.width)
+        : round(w * 1215.0 / 2160.0);
+    CGRect f = _box.frame;
+    f.size = CGSizeMake(w, h);
+    _box.frame = f;
+    [[DSHPetPlayer shared] setDisplaySize:CGSizeMake(w, h)];
+
+    CGSize b = _window.bounds.size;
+    if (b.width > 1.0 && b.height > 1.0) {
+        CGPoint c = [self clampedCenter:_box.center inSize:b];
+        _box.center = c;
+        _cfg[@"centerX"] = @(c.x / b.width);
+        _cfg[@"centerY"] = @(c.y / b.height);
+    }
+    _cfg[@"size"] = @(w);
+    DSHPetSaveUIConfig(_cfg);
+    DSHPetLog(@"prefs", @"size", @"info", @{ @"w": @(w), @"h": @(h),
+                                             @"ratio": _cfg[@"sizeRatio"] ?: @"(none)" });
+}
+
+- (CGRect)sceneBoundsIfValid {    if (!_scene) return CGRectZero;
     return _scene.coordinateSpace.bounds;
 }
 
