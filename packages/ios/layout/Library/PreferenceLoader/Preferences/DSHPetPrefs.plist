@@ -1,9 +1,21 @@
-{
-	entry = {
-		bundle = DSHPetPrefs;
-		cell = PSLinkCell;
-		detail = PSListController;
-		isController = 1;
-		label = 小肥娘;
-	};
-}
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- PreferenceLoader 入口：设置里出现「小肥娘」这一行，点进去加载 DSHPetPrefs.bundle 的 Root.plist。
+     必须是 XML plist——旧式 NeXTSTEP 花括号写法 plutil 解析不了，CI 的 plist-lint 会直接红。 -->
+<plist version="1.0">
+<dict>
+	<key>entry</key>
+	<dict>
+		<key>bundle</key>
+		<string>DSHPetPrefs</string>
+		<key>cell</key>
+		<string>PSLinkCell</string>
+		<key>detail</key>
+		<string>PSListController</string>
+		<key>isController</key>
+		<true/>
+		<key>label</key>
+		<string>小肥娘</string>
+	</dict>
+</dict>
+</plist>
