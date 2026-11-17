@@ -3,6 +3,10 @@
 
 NSString *const DSHPetSayNotification = @"DSHPetSay";
 NSString *const DSHPetStatusNotification = @"DSHPetStatus";
+NSString *const DSHPetSessionsNotification = @"DSHPetSessions";
+
+// S6c：会话多久没动静就算"结束"（不再给它分配宠物）。
+static const NSTimeInterval kDSHPetSessionTTL = 15.0 * 60.0;
 
 @interface DSHPetBridge ()
 @property (nonatomic, strong) NSURLSession *session;
@@ -16,6 +20,8 @@ NSString *const DSHPetStatusNotification = @"DSHPetStatus";
 @property (nonatomic, copy) NSString *lastNotifyCounter;
 @property (nonatomic, readwrite, copy) NSString *lastError;
 @property (nonatomic, readwrite, copy) NSString *workState;
+// S6c：sessionId -> @{id,lastSeen,text}
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary *> *sessionMap;
 @end
 
 @implementation DSHPetBridge
@@ -37,7 +43,57 @@ NSString *const DSHPetStatusNotification = @"DSHPetStatus";
     _session = [NSURLSession sessionWithConfiguration:cfg];
     _lastCounter = -1.0;
     _failures = 0;
+    _sessionMap = [NSMutableDictionary dictionary];
     return self;
+}
+
+#pragma mark - S6c 会话集合
+
+- (void)touchSession:(NSString *)sid text:(NSString *)text {
+    if (!sid.length) return;
+    NSMutableDictionary *rec = self.sessionMap[sid];
+    BOOL isNew = (rec == nil);
+    if (isNew) rec = [NSMutableDictionary dictionary];
+    rec[@"id"] = sid;
+    rec[@"lastSeen"] = @([[NSDate date] timeIntervalSince1970]);
+    if (text.length) rec[@"text"] = text;
+    self.sessionMap[sid] = rec;
+    if (isNew) {
+        DSHPetLog(@"bridge", @"session-new", @"info", @{ @"id": sid,
+                                                         @"n": @(self.sessionMap.count) });
+        [self notifySessionsChanged];
+    }
+}
+
+- (void)pruneSessions {
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    NSMutableArray<NSString *> *dead = [NSMutableArray array];
+    for (NSString *k in self.sessionMap) {
+        double seen = [self.sessionMap[k][@"lastSeen"] doubleValue];
+        if (now - seen > kDSHPetSessionTTL) [dead addObject:k];
+    }
+    if (!dead.count) return;
+    [self.sessionMap removeObjectsForKeys:dead];
+    DSHPetLog(@"bridge", @"session-expire", @"info", @{ @"n": @(dead.count),
+                                                        @"left": @(self.sessionMap.count) });
+    [self notifySessionsChanged];
+}
+
+- (void)notifySessionsChanged {
+    [[NSNotificationCenter defaultCenter] postNotificationName:DSHPetSessionsNotification
+                                                         object:nil
+                                                       userInfo:@{ @"count": @(self.sessionMap.count) }];
+}
+
+- (NSArray<NSDictionary *> *)sessions {
+    [self pruneSessions];
+    NSArray *sorted = [self.sessionMap.allValues sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        double ta = [a[@"lastSeen"] doubleValue], tb = [b[@"lastSeen"] doubleValue];
+        if (ta > tb) return NSOrderedAscending;
+        if (ta < tb) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
+    return sorted ?: @[];
 }
 
 - (void)startWithBase:(NSString *)base token:(NSString *)token interval:(NSTimeInterval)interval {
@@ -134,6 +190,9 @@ NSString *const DSHPetStatusNotification = @"DSHPetStatus";
     if ([work isKindOfClass:[NSDictionary class]]) {
         NSDictionary *d = work[@"data"];
         if ([d isKindOfClass:[NSDictionary class]]) {
+            // S6c：工作状态里若带 sessionId 也记一笔——多开时这只宠物就归这个会话
+            NSString *wsid = d[@"sessionId"];
+            if ([wsid isKindOfClass:[NSString class]] && wsid.length) [self touchSession:wsid text:nil];
             NSString *st = d[@"state"];
             if ([st isKindOfClass:[NSString class]] && st.length && ![st isEqualToString:self.workState ?: @""]) {
                 self.workState = st;
@@ -159,6 +218,12 @@ NSString *const DSHPetStatusNotification = @"DSHPetStatus";
                     if ([evData isKindOfClass:[NSDictionary class]]) text = evData[@"text"];
                 }
                 if (![text isKindOfClass:[NSString class]]) text = d[@"text"];
+            // S6c：会话身份。上游把 sessionId 放在 data 同层（也可能是顶层），两处都认。
+            NSString *sid = d[@"sessionId"];
+            if (![sid isKindOfClass:[NSString class]] || !sid.length) sid = root[@"sessionId"];
+            if ([sid isKindOfClass:[NSString class]] && sid.length) {
+                [self touchSession:sid text:[text isKindOfClass:[NSString class]] ? text : nil];
+            }
             }
             if ([text isKindOfClass:[NSString class]] && text.length) {
                 self.lastNotifyCounter = nkey;

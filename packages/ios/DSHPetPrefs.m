@@ -150,6 +150,23 @@ static NSString *const kPrefsFileDirect = @"/var/mobile/Library/Preferences/com.
         if (fabs([cfg[@"bridgeInterval"] doubleValue] - iv) > 0.01) { cfg[@"bridgeInterval"] = @(iv); changed = YES; }
     }
 
+    // —— S6c 多开 ——
+    // 面板里 multiPetsMax 是 PSSlider/PSListItems 都可能写成字符串，统一按数值读并夹到 1–8。
+    if ([self hasKey:@"multiPetsEnabled"]) {
+        BOOL on = [self boolForKey:@"multiPetsEnabled" fallback:NO];
+        if ([cfg[@"multiPetsEnabled"] boolValue] != on) { cfg[@"multiPetsEnabled"] = @(on); changed = YES; }
+    }
+    if ([self hasKey:@"multiPetsMax"]) {
+        NSInteger n = (NSInteger)[self doubleForKey:@"multiPetsMax" fallback:3.0];
+        if (n < 1) n = 1;
+        if (n > 8) n = 8;
+        if ([cfg[@"multiPetsMax"] integerValue] != n) { cfg[@"multiPetsMax"] = @(n); changed = YES; }
+    }
+    if ([self hasKey:@"perSession"]) {
+        BOOL on = [self boolForKey:@"perSession" fallback:YES];
+        if ([cfg[@"perSession"] boolValue] != on) { cfg[@"perSession"] = @(on); changed = YES; }
+    }
+
     if (changed) DSHPetLog(@"prefs", @"merged", @"info", @{ @"cfg": @{ @"enabled": cfg[@"enabled"] ?: @"(none)",
                                                                        @"edge": cfg[@"edgePreset"] ?: @"(none)",
                                                                        @"bridge": cfg[@"bridgeEnabled"] ?: @"(none)" } });

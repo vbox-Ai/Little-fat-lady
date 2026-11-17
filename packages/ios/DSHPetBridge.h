@@ -4,6 +4,8 @@
 // 只读，绝不调 /quit、不写 /config（见方案 §19 红线）。
 extern NSString *const DSHPetSayNotification;   // userInfo: {text, kind}
 extern NSString *const DSHPetStatusNotification; // userInfo: {state, task}
+// S6c：最近活跃会话集合变了（新增/过期），userInfo: {count}
+extern NSString *const DSHPetSessionsNotification;
 
 @interface DSHPetBridge : NSObject
 
@@ -13,5 +15,10 @@ extern NSString *const DSHPetStatusNotification; // userInfo: {state, task}
 - (void)pollOnce;
 @property (nonatomic, readonly) NSString *lastError;
 @property (nonatomic, readonly) NSString *workState;
+
+/// S6c 多开：最近活跃的会话（`@[@{@"id":…, @"lastSeen":…, @"text":…}, …]`，按最近活跃排序）。
+/// 依据是 `/state` 里 notify 事件带的 `sessionId` —— 上游没有单独的"会话列表"接口，
+/// 所以这里只认"最近真的有动静"的会话。多开时一只宠物跟一个会话，靠它来分工。
+@property (nonatomic, readonly, copy) NSArray<NSDictionary *> *sessions;
 
 @end

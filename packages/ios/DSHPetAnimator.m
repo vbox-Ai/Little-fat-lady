@@ -34,6 +34,19 @@ static NSString *const kCatOther = @"other";
     return s;
 }
 
+- (instancetype)initWithPlayer:(DSHPetPlayer *)player {
+    if ((self = [self init])) {
+        _player = player;
+    }
+    return self;
+}
+
+- (DSHPetPlayer *)player {
+    // 老路径（单宠）从来没设过 player，这里兜底回单例，保证 S4 的行为一个字节不变。
+    if (!_player) _player = [DSHPetPlayer shared];
+    return _player;
+}
+
 - (instancetype)init {
     if ((self = [super init])) {
         _groups = [NSMutableDictionary dictionary];
@@ -212,8 +225,8 @@ static NSString *const kCatOther = @"other";
             matteURL = [NSURL fileURLWithPath:mp];
         }
     }
-    BOOL ok = matteURL ? [[DSHPetPlayer shared] playClipAtURL:url matteURL:matteURL]
-                       : [[DSHPetPlayer shared] playClipAtURL:url];
+    BOOL ok = matteURL ? [self.player playClipAtURL:url matteURL:matteURL]
+                       : [self.player playClipAtURL:url];
     if (ok) {
         self.currentClip = file;
         DSHPetLog(@"anim", @"play", @"debug", @{ @"clip": file });

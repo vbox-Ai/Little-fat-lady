@@ -6,6 +6,7 @@
 #import "DSHPetBridge.h"
 #import "DSHPetHaptics.h"
 #import "DSHPetPrefs.h"
+#import "DSHPetCrew.h"
 #import <CoreMotion/CoreMotion.h>
 #import "DSHPetPlayer.h"
 #import "DSHPetAnimator.h"
@@ -111,6 +112,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     CMMotionManager *_motion;
     BOOL _userSized;      // 用户捏过之后就别再自动改尺寸
     id _prefsObs;         // S7：SpringBoard 回前台时重读设置面板
+    id _sessionsObs;      // S6c：会话集合变化时调整多开数量
 }
 
 + (instancetype)shared {
@@ -263,6 +265,19 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
     [self setupBubbleInRoot:root.view];
 
+    // S6c：会话集合变了（新的 DSH 会话出现 / 久不活跃过期）→ 调整额外宠物数量
+    if (!_sessionsObs) {
+        __weak DSHPetOverlay *weakSess = self;
+        _sessionsObs = [[NSNotificationCenter defaultCenter] addObserverForName:DSHPetSessionsNotification
+                                                                        object:nil
+                                                                         queue:[NSOperationQueue mainQueue]
+                                                                    usingBlock:^(NSNotification *note) {
+            DSHPetOverlay *s = weakSess;
+            if (!s || !s->_window) return;
+            [[DSHPetCrew shared] reconcileWithBounds:s->_window.bounds config:s->_cfg];
+        }];
+    }
+
     // S7：从「设置」改完面板退回桌面 → SpringBoard 回前台 → 重读设置。
     if (!_prefsObs) {
         __weak DSHPetOverlay *weakPrefs = self;
@@ -336,6 +351,12 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     }
 
     [[DSHPetAnimator shared] startWithDirectory:@"/var/mobile/Library/DSHPet/assets"];
+
+    // S6c：多开管家。主宠仍归本类，这里只负责第 2..N 只（默认 0 只）。
+    [[DSHPetCrew shared] startInHost:root.view
+                            assetDir:@"/var/mobile/Library/DSHPet/assets"
+                              bounds:_window.bounds
+                              config:_cfg];
         if ([[DSHPetPlayer shared] isReady]) {
             _firstFrameSeen = YES;
             [self hideBoxChrome];
@@ -758,6 +779,11 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
             [self relayoutAndSettle:NO];
         }
     }
+    // S6c：多开配置（开关 / 上限 / 是否每只跟一个会话）变了 → 该生的生、该收的收
+    if (_window) {
+        [[DSHPetCrew shared] reconcileWithBounds:_window.bounds config:_cfg];
+    }
+
     DSHPetLog(@"prefs", @"reload", @"info", @{ @"pet": @(petOn), @"bridge": @(bridgeOn),
                                                 @"edge": _cfg[@"edgePreset"] ?: @"(default)",
                                                 @"changed": @(changed) });
@@ -865,6 +891,9 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         @"boxY": @(_box.center.y),
         @"forced": @(forced),
     });
+
+    // S6c：额外宠物跟着主宠一起重排（旋转/分屏时它们也得夹回可见区，否则会飘到屏幕外）
+    [[DSHPetCrew shared] relayoutInBounds:CGRectMake(0.0, 0.0, b.width, b.height) settle:settle];
 }
 
 - (void)onOrientationChange:(NSNotification *)n {
@@ -929,7 +958,12 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     } else {
         _window.hidden = YES;
     }
-    [CATransaction commit];
+        if (!visible) {
+        // 总开关关掉：额外宠物一起收掉。窗口藏起来看不到，但它们的播放器和物理还在跑，
+        // 不收就是白烧电。
+        [[DSHPetCrew shared] stop];
+    }
+[CATransaction commit];
 }
 
 - (void)detach {

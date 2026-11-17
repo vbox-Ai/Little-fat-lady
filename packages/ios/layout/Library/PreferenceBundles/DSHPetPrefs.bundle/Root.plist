@@ -217,6 +217,75 @@
 			<key>cell</key>
 			<string>PSGroupSpecifier</string>
 			<key>label</key>
+			<string>多开</string>
+			<key>footerText</key>
+			<string>多开时每只是独立的小肥娘：各有自己的动作、各自能拖能扔，落地后会互相轻轻推开，不会叠成一坨。「每只跟一个会话」开着时，一只宠物认领一个最近有动静的 DSH 会话（15 分钟没动静就收回）；关掉就是同一个模样多放几只。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>启用多开</string>
+			<key>key</key>
+			<string>multiPetsEnabled</string>
+			<key>default</key>
+			<false/>
+			<key>defaults</key>
+			<string>com.vboxai.littlefatlady.prefs</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>PSListItemsController</string>
+			<key>label</key>
+			<string>最多几只</string>
+			<key>key</key>
+			<string>multiPetsMax</string>
+			<key>default</key>
+			<string>3</string>
+			<key>defaults</key>
+			<string>com.vboxai.littlefatlady.prefs</string>
+			<key>values</key>
+			<array>
+				<string>1</string>
+				<string>2</string>
+				<string>3</string>
+				<string>4</string>
+				<string>5</string>
+				<string>6</string>
+				<string>7</string>
+				<string>8</string>
+			</array>
+			<key>titles</key>
+			<array>
+				<string>1 只</string>
+				<string>2 只</string>
+				<string>3 只</string>
+				<string>4 只</string>
+				<string>5 只</string>
+				<string>6 只</string>
+				<string>7 只</string>
+				<string>8 只</string>
+			</array>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>每只跟一个会话</string>
+			<key>key</key>
+			<string>perSession</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.vboxai.littlefatlady.prefs</string>
+		</dict>
+
+		<dict>
+			<key>cell</key>
+			<string>PSGroupSpecifier</string>
+			<key>label</key>
 			<string>关于</string>
 			<key>footerText</key>
 			<string>小肥娘（dsh-pet iOS 移植）。代码 MIT，素材 CC BY-NC-SA 4.0，禁止商用，二创须署名。源码：github.com/vbox-Ai/Little-fat-lady</string>

@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- PreferenceLoader 入口：设置里出现「小肥娘」这一行，点进去加载 DSHPetPrefs.bundle 的 Root.plist。
+
+     ⚠️ 这里**只能**有 bundle / cell / label 三个键。
+     之前多写了 detail=PSListController + isController=true，iOS 17 的 Preferences 会把
+     DSHPetPrefs.bundle 当成**代码包**去 load，而它是纯 plist 包（没有 CFBundleExecutable），
+     于是弹「未能载入软件包"小肥娘"，因为未能找到其可执行文件的位置」。
+     纯 plist 面板的正确写法就是不带 detail —— 由 PreferenceLoader 自己的控制器读 Root.plist。
+
      必须是 XML plist——旧式 NeXTSTEP 花括号写法 plutil 解析不了，CI 的 plist-lint 会直接红。 -->
 <plist version="1.0">
 <dict>
@@ -10,10 +17,6 @@
 		<string>DSHPetPrefs</string>
 		<key>cell</key>
 		<string>PSLinkCell</string>
-		<key>detail</key>
-		<string>PSListController</string>
-		<key>isController</key>
-		<true/>
 		<key>label</key>
 		<string>小肥娘</string>
 	</dict>
