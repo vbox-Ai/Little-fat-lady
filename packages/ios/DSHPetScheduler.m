@@ -191,11 +191,44 @@ static const NSTimeInterval kCDGreet = 3600.0;
     if ([chosen isEqualToString:@"idleAction"]) {
         if ([self cooledDown:@"idleAction" window:kCDIdleAction]) {
             [self mark:@"idleAction"];
-            // 小动作不发台词：动作本身就是表达，配台词反而吵
-            BOOL ok = [[DSHPetAnimator shared] playRandomFromCategory:@"play"];
-            if (!ok) {
-                [[DSHPetAnimator shared] playRandomFromCategory:@"eat"];
+            // S-M1c 动作库：不再是"先 play 再 eat"的硬编码两档，
+            // 按权重从 play/eat/idle/turn 四类里抽，抽到哪类就从哪类随机一段。
+            // 权重参考上游 animations.categories（小动作/玩耍/吃什么/时节），
+            // 移植版的素材只分了这四桶，所以按桶给权：
+            //   play(玩/杂项) 5 · eat(吃什么) 4 · idle(小动作) 3 · turn(转身) 2
+            // 小动作不发台词：动作本身就是表达，配台词反而吵。
+            NSArray<NSString *> *cats = @[@"play", @"eat", @"idle", @"turn"];
+            NSArray<NSNumber *> *weights = @[@5, @4, @3, @2];
+            NSInteger total = 0;
+            for (NSNumber *w in weights) {
+                total += w.integerValue;
             }
+            NSInteger pick = (NSInteger)arc4random_uniform((uint32_t)MAX(total, 1));
+            NSInteger acc = 0;
+            NSString *picked = nil;
+            for (NSUInteger i = 0; i < cats.count; i++) {
+                acc += weights[i].integerValue;
+                if (pick < acc) {
+                    picked = cats[i];
+                    break;
+                }
+            }
+            BOOL ok = NO;
+            if (picked) {
+                ok = [[DSHPetAnimator shared] playRandomFromCategory:picked];
+            }
+            if (!ok) {
+                // 抽中的桶没素材（比如只装了 idle），按顺序兜底，全空就静默
+                for (NSString *fallback in cats) {
+                    if ([fallback isEqualToString:picked ?: @""]) continue;
+                    if ([[DSHPetAnimator shared] playRandomFromCategory:fallback]) {
+                        picked = fallback;
+                        ok = YES;
+                        break;
+                    }
+                }
+            }
+            DSHPetLog(@"persona", @"action-lib", ok ? @"debug" : @"warn", @{ @"cat": picked ?: @"none" });
         }
         return;
     }
