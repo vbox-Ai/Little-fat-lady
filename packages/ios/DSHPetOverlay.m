@@ -8,6 +8,7 @@
 #import "DSHPetPrefs.h"
 #import "DSHPetCrew.h"
 #import "DSHPetTodoPanel.h"
+#import "DSHPetMenuPanel.h"
 #import "DSHPetAssets.h"
 #import <CoreMotion/CoreMotion.h>
 #import "DSHPetPlayer.h"
@@ -54,6 +55,10 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 @interface DSHPetWindow : UIWindow
 @property (nonatomic, weak) UIView *touchTarget;
+/// 除宠物框以外、需要接收触摸的视图（气泡 / 待办面板 / 长按菜单）。
+/// 这些视图也是本窗口的子视图，但位置独立于宠物；不放行就会被"宠物框外一律穿透"的规则吃掉，
+/// 表现是「面板画得出来，点不动也关不掉」。
+@property (nonatomic, strong) NSMutableArray<UIView *> *touchRoots;
 @property (nonatomic, copy) void (^onLayout)(void);
 @end
 
@@ -66,8 +71,22 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *v = [super hitTest:point withEvent:event];
+    if (!v) return nil;
     if (v == self || v == self.rootViewController.view) return nil;   // 空白处穿透
-    if (self.touchTarget && ![self.touchTarget pointInside:[self.touchTarget convertPoint:point fromView:self] withEvent:event]) {
+
+    // 1) 有系统弹窗（万一将来又用 UIAlertController）时，整窗放行
+    UIViewController *presented = self.rootViewController.presentedViewController;
+    if (presented && !presented.isBeingDismissed) return v;
+
+    // 2) 自绘面板：只要落在它身上就放行，不受宠物框限制
+    for (UIView *root in self.touchRoots) {
+        if (root.window != self) continue;
+        if ([v isDescendantOfView:root] || v == root) return v;
+    }
+
+    // 3) 其余（宠物框外）一律穿透给 SpringBoard
+    if (self.touchTarget &&
+        ![self.touchTarget pointInside:[self.touchTarget convertPoint:point fromView:self] withEvent:event]) {
         return nil;
     }
     return v;
@@ -92,6 +111,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 #pragma mark - S6d 长按菜单
 - (void)onLongPress:(UILongPressGestureRecognizer *)g;
 - (void)showPetMenu;
+- (void)shuffleExpression;
 - (void)showTodoPanel;
 - (void)showBridgeStatus;
 - (void)showSelfStatusBubble:(NSString *)text;
@@ -126,6 +146,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     id _prefsObs;         // S7：SpringBoard 回前台时重读设置面板
     id _sessionsObs;      // S6c：会话集合变化时调整多开数量
     DSHPetTodoPanel *_todoPanel;   // S6d：长按弹出的待办清单
+    DSHPetMenuPanel *_menuPanel;   // S6d：长按弹出的操作菜单（自绘，不用 UIAlertController）
     NSTimer *_hideTimer;           // S6d：「隐藏 1 小时」的自动恢复
 }
 
@@ -212,42 +233,45 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 }
 
 - (void)showPetMenu {
-    UIViewController *root = _window.rootViewController;
-    if (!root || root.presentedViewController) return;
+    UIView *rootView = _window.rootViewController.view;
+    if (!rootView || !_box) return;
 
-    // 用 actionSheet 而不是自绘菜单：系统样式在越狱机上最稳（不乱、不跟 SpringBoard 抢层级），
-    // 而且"取消"位置固定，用户不用学。
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"小肥娘"
-                                                                  message:nil
-                                                           preferredStyle:UIAlertControllerStyleActionSheet];
-    __weak DSHPetOverlay *weakSelf = self;
-
-    [sheet addAction:[UIAlertAction actionWithTitle:@"待办清单" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-        [weakSelf showTodoPanel];
-    }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"换个表情" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-        // play 桶是上游"玩/杂项"那一堆（67 段），最适合当表情包轮播
-        BOOL ok = [[DSHPetAnimator shared] playRandomFromCategory:@"play"]
-               || [[DSHPetAnimator shared] playRandomFromCategory:@"eat"];
-        [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"menu" minInterval:0.25];
-        DSHPetLog(@"menu", @"shuffle", ok ? @"info" : @"warn", @{ @"ok": @(ok) });
-    }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"连接状态" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-        [weakSelf showBridgeStatus];
-    }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"隐藏 1 小时" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *a) {
-        [weakSelf hideForAWhile:3600.0];
-    }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-
-    // iPad/横屏上 actionSheet 必须有 popover 锚点，否则 iPhone 也会偶发不弹
-    if (sheet.popoverPresentationController) {
-        sheet.popoverPresentationController.sourceView = _box;
-        sheet.popoverPresentationController.sourceRect = _box.bounds;
+    // 已经开着就先收起来（长按两次等于开关）
+    if (_menuPanel && [_menuPanel isShowing]) {
+        [_menuPanel dismiss];
+        return;
     }
-    [root presentViewController:sheet animated:YES completion:nil];
+
+    NSArray<NSString *> *titles = @[@"待办清单", @"换个表情", @"连接状态", @"隐藏 1 小时", @"取消"];
+    __weak DSHPetOverlay *weakSelf = self;
+    _menuPanel = [[DSHPetMenuPanel alloc] initWithTitle:@"小肥娘"
+                                                 titles:titles
+                                                handler:^(NSInteger index) {
+        DSHPetOverlay *s = weakSelf;
+        if (!s) return;
+        switch (index) {
+            case 0: [s showTodoPanel]; break;
+            case 1: [s shuffleExpression]; break;
+            case 2: [s showBridgeStatus]; break;
+            case 3: [s hideForAWhile:3600.0]; break;
+            default: break;
+        }
+    }];
+
+    // 面板一进窗口就要能被点到（窗口只放行宠物框，不放行就点不动）
+    if (![_window.touchRoots containsObject:_menuPanel]) [_window.touchRoots addObject:_menuPanel];
+
+    [_menuPanel showInHost:rootView anchorFrame:[self petFrameInOverlayRoot] safeInsets:[self overlaySafeInsets]];
     [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"menu" minInterval:0.25];
     DSHPetLog(@"menu", @"open", @"debug", nil);
+}
+
+- (void)shuffleExpression {
+    // play 桶是上游"玩/杂项"那一堆（67 段），最适合当表情包轮播
+    BOOL ok = [[DSHPetAnimator shared] playRandomFromCategory:@"play"]
+           || [[DSHPetAnimator shared] playRandomFromCategory:@"eat"];
+    [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"menu" minInterval:0.25];
+    DSHPetLog(@"menu", @"shuffle", ok ? @"info" : @"warn", @{ @"ok": @(ok) });
 }
 
 - (CGRect)petFrameInOverlayRoot {
@@ -267,6 +291,10 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     UIView *rootView = _window.rootViewController.view;
     if (!rootView) return;
     if (!_todoPanel) _todoPanel = [[DSHPetTodoPanel alloc] initWithFrame:CGRectZero];
+    // 同长按菜单：面板要能收到触摸（点一下收起）
+    if (_todoPanel && ![_window.touchRoots containsObject:_todoPanel]) {
+        [_window.touchRoots addObject:_todoPanel];
+    }
 
     CGRect anchor = [self petFrameInOverlayRoot];
     UIEdgeInsets sa = [self overlaySafeInsets];
@@ -382,6 +410,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     _box.userInteractionEnabled = YES;
     [root.view addSubview:_box];
     _window.touchTarget = _box;
+    _window.touchRoots = [NSMutableArray array];
+    if (_bubble) [_window.touchRoots addObject:_bubble];   // 气泡要能点（展开/收起）
 
     // S5：触感总开关 + 力度档（默认开、标准）
     NSDictionary *phc = _cfg[@"physics"];
