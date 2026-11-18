@@ -16,6 +16,10 @@ static const CGFloat kRestMax = 16.0;
 @property (nonatomic, weak, nullable) UIView *pet;
 @property (nonatomic, weak, nullable) UIView *host;
 @property (nonatomic, strong, nullable) NSTimer *tickTimer;
+// S-FIX3：休息用一次性定时器。以前是"一个 30Hz 常开定时器，没到点就 return"，
+// 等于呆着也每秒醒 30 次 —— 常驻进程里这是白烧电，也是最容易被忽略的发热源。
+// 改成：走路时才开 30Hz；到达就停表，改由一个 6～16s 的一次性定时器把下一次叫醒。
+@property (nonatomic, strong, nullable) NSTimer *restTimer;
 @property (nonatomic, assign) BOOL walking;
 @property (nonatomic, assign) BOOL paused;
 @property (nonatomic, assign) CGFloat targetX;
@@ -27,6 +31,10 @@ static const CGFloat kRestMax = 16.0;
 - (CGFloat)clampX:(CGFloat)x;
 - (CGFloat)clampY:(CGFloat)y;
 - (void)scheduleNextWalk;
+- (void)startTickTimer;
+- (void)stopTickTimer;
+- (void)scheduleRestTimer;
+- (void)onRestTimer:(NSTimer *)t;
 @end
 
 @implementation DSHPetWalk
@@ -49,6 +57,8 @@ static const CGFloat kRestMax = 16.0;
 - (void)dealloc {
     [_tickTimer invalidate];
     _tickTimer = nil;
+    [_restTimer invalidate];
+    _restTimer = nil;
 }
 
 - (BOOL)isWalking {
@@ -56,20 +66,52 @@ static const CGFloat kRestMax = 16.0;
 }
 
 - (void)start {
-    if (_tickTimer != nil) {
+    if (_tickTimer != nil || _restTimer != nil) {
         return;
     }
-    [self scheduleNextWalk];
-    __weak DSHPetWalk *weakSelf = self;
+    [self scheduleRestTimer];
+    DSHPetLog(@"walk", @"start", @"info", nil);
+}
+
+- (void)startTickTimer {
+    if (_tickTimer) return;
     _tickTimer = [NSTimer scheduledTimerWithTimeInterval:kTickInterval
                                                   target:self
                                                 selector:@selector(onTimer:)
                                                 userInfo:nil
                                                  repeats:YES];
-    // 让 NSTimer 在菜单拖动（UITrackingRunLoopMode）时也走，否则一滑菜单她就僵住
     [[NSRunLoop mainRunLoop] addTimer:_tickTimer forMode:NSRunLoopCommonModes];
-    (void)weakSelf;
-    DSHPetLog(@"walk", @"start", @"info", nil);
+}
+
+- (void)stopTickTimer {
+    [_tickTimer invalidate];
+    _tickTimer = nil;
+}
+
+- (void)scheduleRestTimer {
+    [_restTimer invalidate];
+    CGFloat rest = kRestMin + (CGFloat)arc4random_uniform(10000) / 10000.0 * (kRestMax - kRestMin);
+    _nextWalkAt = CACurrentMediaTime() + rest;
+    _restTimer = [NSTimer scheduledTimerWithTimeInterval:rest
+                                                 target:self
+                                               selector:@selector(onRestTimer:)
+                                               userInfo:nil
+                                                repeats:NO];
+    [[NSRunLoop mainRunLoop] addTimer:_restTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)onRestTimer:(NSTimer *)t {
+    _restTimer = nil;
+    if (_paused || !self.enabled) {
+        return;
+    }
+    [self beginWalk];
+    if (_walking) {
+        [self startTickTimer];
+    } else {
+        // 被挤住 / 太短，没走成：再歇一轮
+        [self scheduleRestTimer];
+    }
 }
 
 - (void)onTimer:(NSTimer *)t {
@@ -77,8 +119,9 @@ static const CGFloat kRestMax = 16.0;
 }
 
 - (void)stop {
-    [_tickTimer invalidate];
-    _tickTimer = nil;
+    [self stopTickTimer];
+    [_restTimer invalidate];
+    _restTimer = nil;
     if (_walking) {
         _walking = NO;
         if (_onStopWalking) {
@@ -93,6 +136,9 @@ static const CGFloat kRestMax = 16.0;
         return;
     }
     _paused = YES;
+    [_restTimer invalidate];
+    _restTimer = nil;
+    [self stopTickTimer];
     if (_walking) {
         _walking = NO;
         if (_onStopWalking) {
@@ -108,7 +154,7 @@ static const CGFloat kRestMax = 16.0;
     }
     _paused = NO;
     // 落地后别立刻又走，先喘口气
-    [self scheduleNextWalk];
+    [self scheduleRestTimer];
     DSHPetLog(@"walk", @"resume", @"debug", nil);
 }
 
@@ -254,10 +300,12 @@ static const CGFloat kRestMax = 16.0;
 
 - (void)finishWalk {
     _walking = NO;
+    // 到了就停表 —— 休息期间不再有任何周期唤醒（S-FIX3）
+    [self stopTickTimer];
     if (_onStopWalking) {
         _onStopWalking();
     }
-    [self scheduleNextWalk];
+    [self scheduleRestTimer];
 }
 
 - (void)tick {
