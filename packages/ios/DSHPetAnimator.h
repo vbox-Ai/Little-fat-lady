@@ -27,6 +27,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// 用户点一下：在 click 组里轮播（没有 click 组就播 idle）
 - (void)handleTap;
 
+/// S6d：长按菜单「换个表情」用。cat 取 "play"/"eat"/"idle"/"turn" 等分桶名，
+/// 分桶是上游按文件名归类出来的（见 buildIndex），这里不做二次挑拣。
+- (BOOL)playRandomFromCategory:(NSString *)cat;
+
 /// 开始拖动 / 结束拖动
 - (void)handleDragBegin;
 - (void)handleDragEnd;

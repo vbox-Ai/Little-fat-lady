@@ -178,6 +178,60 @@ static const NSTimeInterval kDSHPetSessionTTL = 15.0 * 60.0;
     [self consumeState:(NSDictionary *)root];
 }
 
+- (void)fetchTodos:(void (^)(NSArray<NSDictionary *> *_Nullable, NSString *_Nullable))done {
+    if (!done) return;
+    if (!self.base.length) { done(nil, @"未配置宿主地址"); return; }
+
+    NSString *urlStr = [self.base stringByAppendingString:@"/dsh-pet-7340/todos"];
+    NSURL *url = [NSURL URLWithString:urlStr];
+    if (!url) { done(nil, @"地址不合法"); return; }
+
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.HTTPMethod = @"GET";
+    [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    if (self.token.length) {
+        [req setValue:self.token forHTTPHeaderField:@"X-DSHPet-Token"];
+        [req setValue:[@"Bearer " stringByAppendingString:self.token] forHTTPHeaderField:@"Authorization"];
+    }
+
+    __weak DSHPetBridge *weakSelf = self;
+    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:req
+                                                 completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err) {
+        NSInteger code = 200;
+        if ([resp isKindOfClass:[NSHTTPURLResponse class]]) code = ((NSHTTPURLResponse *)resp).statusCode;
+
+        NSArray<NSDictionary *> *list = nil;
+        NSString *fail = nil;
+        if (err) {
+            fail = err.localizedDescription ?: @"网络错误";
+        } else if (code != 200) {
+            fail = [NSString stringWithFormat:@"宿主返回 %ld", (long)code];
+        } else {
+            id root = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
+            // 上游 GET /todos 的形状是 { ok: true, todos: [...] }（services/host/routes/todos.ts）。
+            // 兼容两种：顶层就是数组，或者包一层。字段名不做假设，交给上层按 TodoItem 读。
+            id arr = root;
+            if ([root isKindOfClass:[NSDictionary class]]) arr = ((NSDictionary *)root)[@"todos"];
+            if ([arr isKindOfClass:[NSArray class]]) {
+                NSMutableArray<NSDictionary *> *keep = [NSMutableArray array];
+                for (id it in (NSArray *)arr) {
+                    if ([it isKindOfClass:[NSDictionary class]]) [keep addObject:it];
+                }
+                list = keep;
+            } else {
+                fail = @"返回里没有 todos 数组";
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            DSHPetBridge *s = weakSelf;
+            if (fail) DSHPetLog(@"bridge", @"todos-fail", @"warn", @{ @"err": fail ?: @"" });
+            else DSHPetLog(@"bridge", @"todos-ok", @"info", @{ @"n": @(list.count), @"base": s.base ?: @"" });
+            done(list, fail);
+        });
+    }];
+    [task resume];
+}
+
 - (void)consumeState:(NSDictionary *)root {
     NSDictionary *sections = root[@"sections"];
     if (![sections isKindOfClass:[NSDictionary class]]) sections = @{};

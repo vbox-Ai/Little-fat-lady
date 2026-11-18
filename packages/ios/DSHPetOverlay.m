@@ -7,6 +7,7 @@
 #import "DSHPetHaptics.h"
 #import "DSHPetPrefs.h"
 #import "DSHPetCrew.h"
+#import "DSHPetTodoPanel.h"
 #import "DSHPetAssets.h"
 #import <CoreMotion/CoreMotion.h>
 #import "DSHPetPlayer.h"
@@ -88,6 +89,15 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (void)clampAndPersist;
 - (void)applySizeFromConfig;
 - (void)applyPrefsNow;
+#pragma mark - S6d 长按菜单
+- (void)onLongPress:(UILongPressGestureRecognizer *)g;
+- (void)showPetMenu;
+- (void)showTodoPanel;
+- (void)showBridgeStatus;
+- (void)showSelfStatusBubble:(NSString *)text;
+- (void)hideForAWhile:(NSTimeInterval)seconds;
+- (CGRect)petFrameInOverlayRoot;
+- (UIEdgeInsets)overlaySafeInsets;
 - (void)showSelfCheckBubble;
 @end
 
@@ -115,6 +125,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     BOOL _userSized;      // 用户捏过之后就别再自动改尺寸
     id _prefsObs;         // S7：SpringBoard 回前台时重读设置面板
     id _sessionsObs;      // S6c：会话集合变化时调整多开数量
+    DSHPetTodoPanel *_todoPanel;   // S6d：长按弹出的待办清单
+    NSTimer *_hideTimer;           // S6d：「隐藏 1 小时」的自动恢复
 }
 
 + (instancetype)shared {
@@ -190,6 +202,119 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     if (@available(iOS 11.0, *)) insets = host.safeAreaInsets;
     CGRect petInHost = [_box convertRect:_box.bounds toView:host];
     [_bubble anchorAtPetFrame:petInHost hostBounds:host.bounds safeInsets:insets];
+}
+
+#pragma mark - S6d 长按菜单
+
+- (void)onLongPress:(UILongPressGestureRecognizer *)g {
+    if (g.state != UIGestureRecognizerStateBegan) return;
+    [self showPetMenu];
+}
+
+- (void)showPetMenu {
+    UIViewController *root = _window.rootViewController;
+    if (!root || root.presentedViewController) return;
+
+    // 用 actionSheet 而不是自绘菜单：系统样式在越狱机上最稳（不乱、不跟 SpringBoard 抢层级），
+    // 而且"取消"位置固定，用户不用学。
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"小肥娘"
+                                                                  message:nil
+                                                           preferredStyle:UIAlertControllerStyleActionSheet];
+    __weak DSHPetOverlay *weakSelf = self;
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"待办清单" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        [weakSelf showTodoPanel];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"换个表情" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        // play 桶是上游"玩/杂项"那一堆（67 段），最适合当表情包轮播
+        BOOL ok = [[DSHPetAnimator shared] playRandomFromCategory:@"play"]
+               || [[DSHPetAnimator shared] playRandomFromCategory:@"eat"];
+        [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"menu" minInterval:0.25];
+        DSHPetLog(@"menu", @"shuffle", ok ? @"info" : @"warn", @{ @"ok": @(ok) });
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"连接状态" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        [weakSelf showBridgeStatus];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"隐藏 1 小时" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *a) {
+        [weakSelf hideForAWhile:3600.0];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+
+    // iPad/横屏上 actionSheet 必须有 popover 锚点，否则 iPhone 也会偶发不弹
+    if (sheet.popoverPresentationController) {
+        sheet.popoverPresentationController.sourceView = _box;
+        sheet.popoverPresentationController.sourceRect = _box.bounds;
+    }
+    [root presentViewController:sheet animated:YES completion:nil];
+    [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"menu" minInterval:0.25];
+    DSHPetLog(@"menu", @"open", @"debug", nil);
+}
+
+- (CGRect)petFrameInOverlayRoot {
+    UIView *rootView = _window.rootViewController.view;
+    if (!rootView || !_box) return CGRectZero;
+    return [_box convertRect:_box.bounds toView:rootView];
+}
+
+- (UIEdgeInsets)overlaySafeInsets {
+    UIView *rootView = _window.rootViewController.view;
+    UIEdgeInsets insets = UIEdgeInsetsZero;
+    if (@available(iOS 11.0, *)) insets = rootView.safeAreaInsets;
+    return insets;
+}
+
+- (void)showTodoPanel {
+    UIView *rootView = _window.rootViewController.view;
+    if (!rootView) return;
+    if (!_todoPanel) _todoPanel = [[DSHPetTodoPanel alloc] initWithFrame:CGRectZero];
+
+    CGRect anchor = [self petFrameInOverlayRoot];
+    UIEdgeInsets sa = [self overlaySafeInsets];
+    [_todoPanel showLoadingInHost:rootView anchorFrame:anchor safeInsets:sa];
+
+    __weak DSHPetOverlay *weakSelf = self;
+    [[DSHPetBridge shared] fetchTodos:^(NSArray<NSDictionary *> *todos, NSString *err) {
+        DSHPetOverlay *s = weakSelf;
+        if (!s || !s->_todoPanel) return;
+        CGRect a = [s petFrameInOverlayRoot];
+        UIEdgeInsets ins = [s overlaySafeInsets];
+        UIView *host = s->_window.rootViewController.view;
+        if (!host) return;
+        if (err.length) {
+            [s->_todoPanel showError:err inHost:host anchorFrame:a safeInsets:ins];
+        } else {
+            [s->_todoPanel showTodos:(todos ?: @[]) inHost:host anchorFrame:a safeInsets:ins];
+        }
+    }];
+}
+
+- (void)showBridgeStatus {
+    DSHPetBridge *b = [DSHPetBridge shared];
+    NSString *state = b.workState.length ? [self labelForWorkState:b.workState] : @"未知";
+    NSString *base = _cfg[@"bridgeBase"] ?: @"https://dsh.vbox.ltd:42429";
+    NSString *err = b.lastError.length ? b.lastError : @"无";
+    NSString *text = [NSString stringWithFormat:@"会话状态：%@\n会话数：%lu\n宿主：%@\n最近错误：%@",
+                      state, (unsigned long)b.sessions.count, base, err];
+    [self showSelfStatusBubble:text];
+}
+
+- (void)showSelfStatusBubble:(NSString *)text {
+    if (!_bubble) return;
+    [_bubble showText:text duration:10.0];
+    [self anchorBubble];
+}
+
+- (void)hideForAWhile:(NSTimeInterval)seconds {
+    [self setLayerVisible:NO];
+    [_hideTimer invalidate];
+    __weak DSHPetOverlay *weakSelf = self;
+    _hideTimer = [NSTimer scheduledTimerWithTimeInterval:seconds repeats:NO block:^(NSTimer *t) {
+        DSHPetOverlay *s = weakSelf;
+        if (!s) return;
+        [s setLayerVisible:YES];
+        DSHPetLog(@"menu", @"auto-show", @"info", @{ @"after": @(seconds) });
+    }];
+    DSHPetLog(@"menu", @"hide", @"info", @{ @"seconds": @(seconds) });
 }
 
 - (BOOL)attachToScene:(UIWindowScene *)scene {
@@ -428,6 +553,18 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     UIPinchGestureRecognizer *pinch = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(onPinch:)];
     [_box addGestureRecognizer:pinch];
 
+    // S6d：长按弹菜单（待办 / 换表情 / 连接状态 / 隐藏）。
+    // 0.45s 比系统默认 0.5s 略短一点：桌面上长按宠物，手感上"按住就出"比"按住半秒还没反应"好。
+    UILongPressGestureRecognizer *longPress =
+        [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(onLongPress:)];
+    longPress.minimumPressDuration = 0.45;
+    longPress.allowableMovement = 14.0;
+    [_box addGestureRecognizer:longPress];
+    // 两个手势各管一段，互相之间**不要**加 requireGestureRecognizerToFail：
+    //   · 按住不动 0.45s → 长按命中，pan 还停在 possible，不冲突；
+    //   · 手指一开始动就超 allowableMovement → 长按自己失败，pan 立刻接管。
+    // 反过来给 pan 加"必须等长按失败"，拖宠物会先卡 0.45 秒，手感直接废掉。
+
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 
     __weak DSHPetOverlay *weakSelf = self;
@@ -479,8 +616,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     }];
 }
 
-- (void)onPinch:(UIPinchGestureRecognizer *)g {
-    if (g.state == UIGestureRecognizerStateBegan) {
+- (void)onPinch:(UIPinchGestureRecognizer *)g {    if (g.state == UIGestureRecognizerStateBegan) {
         _pinchStartW = CGRectGetWidth(_box.bounds);
     }
     _userSized = YES;

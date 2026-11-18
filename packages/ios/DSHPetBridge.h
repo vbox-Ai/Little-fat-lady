@@ -21,4 +21,10 @@ extern NSString *const DSHPetSessionsNotification;
 /// 所以这里只认"最近真的有动静"的会话。多开时一只宠物跟一个会话，靠它来分工。
 @property (nonatomic, readonly, copy) NSArray<NSDictionary *> *sessions;
 
+/// S6d 待办面板：GET {base}/dsh-pet-7340/todos（上游 `{ ok, todos: [...] }`）。
+/// 只读。传回原始条目字典，字段按上游 TodoItem：id/text/dueAt/done/createdAt/updatedAt/completedAt。
+/// 写操作（勾选、新建）在手机上不做 —— 改宿主状态属于红线外的事，先只读展示。
+- (void)fetchTodos:(void (^)(NSArray<NSDictionary *> *_Nullable todos,
+                            NSString *_Nullable errorText))done;
+
 @end

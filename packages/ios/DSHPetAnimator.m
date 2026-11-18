@@ -207,6 +207,11 @@ static NSString *const kCatOther = @"other";
     DSHPetLog(@"anim", @"index", @"info", @{ @"dir": scanDir, @"groups": counts });
 }
 
+- (BOOL)playRandomFromCategory:(NSString *)cat {
+    NSString *f = [self pickFrom:cat] ?: [self pickFrom:kCatOther];
+    return [self play:f];
+}
+
 - (nullable NSString *)pickFrom:(NSString *)cat {
     NSArray<NSString *> *bucket = self.groups[cat];
     if (!bucket.count) return nil;
