@@ -125,6 +125,25 @@ static const CGFloat kRestMax = 16.0;
     CGFloat halfW = pet.bounds.size.width * 0.5;
     CGFloat lo = _margin + halfW;
     CGFloat hi = b.size.width - _margin - halfW;
+
+    // S-M1b：按分区再收一次边界。收完发现区间反了（宠物太大 / 分区太窄）
+    // 就退回全屏，宁可分区不生效，也别让她卡在边界上来回抖。
+    if (_zone != 0) {
+        CGFloat fullLo = lo;
+        CGFloat fullHi = hi;
+        if (_zone == 1) {
+            hi = MIN(hi, b.size.width * 0.5 - halfW);
+        } else if (_zone == 2) {
+            lo = MAX(lo, b.size.width / 3.0 + halfW);
+            hi = MIN(hi, b.size.width * 2.0 / 3.0 - halfW);
+        } else if (_zone == 3) {
+            lo = MAX(lo, b.size.width * 0.5 + halfW);
+        }
+        if (hi < lo) {
+            lo = fullLo;
+            hi = fullHi;
+        }
+    }
     if (hi < lo) {
         // 宠物比可用宽度还大（用户拉到 62%），居中就好，别乱跳
         return b.size.width * 0.5;
