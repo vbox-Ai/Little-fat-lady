@@ -1899,3 +1899,10 @@ deb 138.25MB / sha256 `deb4f58b…d977510` / Release `449080654` / CI `441521402
 - 交付：commit `507fc0ae` / CI `44200784441` / deb 138.26MB /
   sha256 `31cb8937…7311dc` / Release `449353660`。
 - 剩余：S6d（长按菜单 / 待办面板 / 表情包）、S7c（重置开关，R34 走自复位开关）。
+## 23.3 S7 面板改代码 bundle（2026-11-18，v0.1.0-131）
+
+- 症状链：120 报「未能载入软件包」→ 123 删 `detail` 后整行不显示 → 124 只是文档提交，非引入点。
+- 取证：同生态可用面板 `com.axs.appiconbundles` 是代码 bundle（可执行 + `NSPrincipalClass` + entry 的 `detail` 指向 bundle 内控制器）。
+- 落地：`BUNDLE_NAME = DSHPetPrefs` + `DSHPetPrefsRootListController`（`PSListController` 子类，读写钉 `com.vboxai.littlefatlady.prefs`）；资源 plist 走 `layout/`。
+- 关键坑：私有框架 `Preferences` 无 tbd → `-undefined dynamic_lookup`；bundle 目标不拷资源目录 → 资源必须落 `layout/`。
+- 同时修：最低系统 17.0→15.0（Dopamine 覆盖 iOS 15–16）、素材根候选扩容、`doctor.txt` 自检、8 秒未上屏气泡报原因、`DSHPetBoot` 里「白名单横扫式素材清理」改为只清根级老 mp4/mov 与废弃 color/matte（这条是 Dopamine 绿方块的直接成因）。

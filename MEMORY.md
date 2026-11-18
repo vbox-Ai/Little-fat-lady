@@ -103,3 +103,5 @@
 - `contentsGravity` 一律用 `ResizeAspect`：`Resize` 在任何一帧矩形算错时都会**当场拉伸**，属于结构性隐患。
 - 有分桶素材时必须忽略同级平铺文件：0.1.0-31 的演示片是 320×314 方形画布，混进 idle 类别被抽中就会放大 1.4 倍显糊（真机「待机偶发模糊」根因）。
 - `naturalSize` 要每帧同步：只在首次赋值会让宿主比例锁死最早那段素材。
+- iOS 17 越狱插件设置面板必须做成代码 bundle（Theos `BUNDLE_NAME` + `PSListController` 子类 + `-undefined dynamic_lookup`），纯 plist 面板在 PreferenceLoader 2.2.8 上要么整行不显示、要么报「未能载入软件包」；bundle 资源 plist 要放 `layout/`，Theos 的 bundle 目标只出可执行文件。
+- 宠物素材按 `idle/`、`move/` 等分桶存放，任何「不在白名单就删」的清理逻辑都会周期性删空素材导致占位色块；清理只允许针对已知历史文件名与已废弃目录（`color/`、`matte/`）。
