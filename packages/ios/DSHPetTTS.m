@@ -118,8 +118,6 @@ static void DSHPetTTSOnPurge(CFNotificationCenterRef center,
 - (void)ensureCacheDirectory;
 - (void)finishWith:(void (^)(NSURL *, NSError *))completion file:(NSURL *)file error:(NSError *)error;
 - (NSError *)errorWithCode:(NSInteger)code reason:(NSString *)reason;
-- (void)requestVolc:(NSString *)text completion:(void (^)(NSURL *, NSError *))completion;
-- (void)requestOpenAI:(NSString *)text completion:(void (^)(NSURL *, NSError *))completion;
 - (NSData *)synthesizeSynchronously:(NSString *)text error:(NSError **)outError;
 - (NSData *)requestVolcSync:(NSString *)text error:(NSError **)outError;
 - (NSData *)requestOpenAISync:(NSString *)text error:(NSError **)outError;
