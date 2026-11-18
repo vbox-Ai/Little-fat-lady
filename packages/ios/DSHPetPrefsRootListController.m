@@ -1,22 +1,34 @@
 // 小肥娘 · 设置面板
 //
-// 这一版**不用** PSListController 了。
+// 闪退修复（v0.1.0-137）：detail 指向的类必须是 PSListController 子类。
+//
+// 崩溃链（真机日志，Preferences 进程 EXC_CRASH / SIGABRT，abort() called）：
+//   UITableView 选中行 → PSListController tableView:didSelectRowAtIndexPath:
+//   → PSListController controllerForSpecifier: → doesNotRecognizeSelector
+//   → ___forwarding___ → objc_exception_throw → abort()
+// Preferences 拿到入口 plist 的 detail 类名后，按 PSController / PSSpecifier 那套
+// 私有协议给实例发选择子。上一版把控制器写成纯 UIViewController，不响应这些选择子，
+// forwarding 抛异常直接把整个「设置」App 打挂。
 //
 // 教训链：
 //   1) 纯 plist 面板（只有 Info/Root.plist）在 iOS 17 + PreferenceLoader 2.2.8 上：
 //      entry 带 detail → 报「未能载入软件包…未能找到其可执行文件的位置」；
 //      entry 去掉 detail → 设置里连那一行都不出现。
-//   2) 改成代码 bundle（有可执行文件 + NSPrincipalClass）后行能显示、能点进来，
-//      但页面一片空白 —— PSListController 的子类并不会自动去读 Root.plist，
-//      补了 `-specifiers` 也没救活（Preferences 里那一套私有加载链太脆）。
+//   2) 改成代码 bundle 后行能显示、能点进来，但 PSListController 子类不会自动读
+//      Root.plist，补 `-specifiers` 也救不活（私有加载链太脆）→ 页面空白。
+//   3) 于是上一版改成纯 UIViewController，结果撞上上面的闪退。
 //
-// 所以：这里写成**纯 UIKit** 的 UIViewController + UITableView。
-// 不碰任何私有类、不依赖 Root.plist、界面完全由代码生成。
-// PreferenceLoader 只要求 detail 指向一个 UIViewController 子类，这一点它一直支持。
-// 读写仍然钉在 com.vboxai.littlefatlady.prefs 域上（dylib 侧读的就是这个域）。
+// 现在：继承 PSListController（私有选择子全部接住，不再 forwarding 抛异常），
+// 但界面仍然完全自绘 —— 在 -loadView 里建自己的 UITableView，不调 super 的
+// viewDidLoad（那条 specifier 建表链不依赖），不碰 Root.plist。
+// 读写钉在 com.vboxai.littlefatlady.prefs 域上（dylib 侧读的就是这个域）。
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+
+// PSListController 是 Preferences 私有框架里的类，SDK 没有头文件。
+// 只前向声明；链接期用 -undefined dynamic_lookup，运行期由宿主 Preferences 进程提供。
+@class PSListController;
 
 static NSString *const kDSHPetPrefsDomain = @"com.vboxai.littlefatlady.prefs";
 static NSString *const kDSHPetRepoURL = @"https://github.com/vbox-Ai/Little-fat-lady";
@@ -45,7 +57,7 @@ typedef NS_ENUM(NSInteger, DSHPetRowKind) {
 @implementation DSHPetRow
 @end
 
-@interface DSHPetPrefsRootListController : UIViewController <UITableViewDataSource, UITableViewDelegate>
+@interface DSHPetPrefsRootListController : PSListController <UITableViewDataSource, UITableViewDelegate>
 @end
 
 @implementation DSHPetPrefsRootListController {
@@ -143,20 +155,37 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
 
 #pragma mark - 生命周期
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.title = @"小肥娘";
-    [self buildModel];
+// 自绘界面。不调 [super loadView]：PSListController / UITableViewController 的
+// loadView 会按 specifier 建表，那条私有链在 iOS 17 + PreferenceLoader 2.2.8 上
+// 不可靠，而且会跟我们自建的表抢同一块视图。
+- (void)loadView {
+    UIView *root = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 480)];
+    root.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
-    _table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    _table = [[UITableView alloc] initWithFrame:root.bounds style:UITableViewStyleInsetGrouped];
     _table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _table.dataSource = self;
     _table.delegate = self;
     _table.rowHeight = UITableViewAutomaticDimension;
     _table.estimatedRowHeight = 46.0;
-    [self.view addSubview:_table];
+    [root addSubview:_table];
+
+    self.view = root;
+}
+
+// 同样不调 [super viewDidLoad]：PSListController 的 viewDidLoad 会走 specifier 建表，
+// 我们已经完全自绘，跳过它避免空表 / 视图冲突。
+- (void)viewDidLoad {
+    self.title = @"小肥娘";
+    [self buildModel];
+    [_table reloadData];
 
     NSLog(@"[DSHPetPrefs] panel loaded, sections=%lu", (unsigned long)_sections.count);
+}
+
+// 兜底：任何仍走 specifier 的路径拿到空数组，没有内容可渲染，也不会崩。
+- (NSArray *)specifiers {
+    return @[];
 }
 
 #pragma mark - 取值/显示
