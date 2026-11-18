@@ -25,6 +25,12 @@ NS_ASSUME_NONNULL_BEGIN
 // maxChars 建议 800～1200（再长会挤掉人设，模型容易只复述不复述判断）。
 + (nullable NSString *)currentScreenTextWithLimit:(NSInteger)maxChars;
 
+// 同上，但顺带告诉你这一屏有没有密码框（AXRole 里带 Secure/Password 的元素）。
+// 这个判定比关键词匹配可靠：系统在做安全输入时会切到安全键盘，
+// 那一层的 role 就是 AXSecureTextField，而不是靠"密码"两个字去猜。
+// secureOut 可为 NULL。
++ (nullable NSString *)currentScreenTextWithLimit:(NSInteger)maxChars secure:(nullable BOOL *)secureOut;
+
 @end
 
 NS_ASSUME_NONNULL_END
