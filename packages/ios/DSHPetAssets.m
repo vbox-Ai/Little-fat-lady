@@ -94,7 +94,6 @@ static BOOL DSHPetDirHasMovies(NSString *dir) {
 }
 
 void DSHPetEnsureAssets(void) {
-    NSFileManager *fm = [NSFileManager defaultManager];
     // 目标目录里已经有素材就不动，避免覆盖用户自己放的素材。
     // （老版本这里还额外判一次 color/ 目录 —— 那是双路合成时代的产物，
     //   留着它会让「只剩旧 color mp4」的机器永远不再补新 webp，已删。）
