@@ -75,6 +75,8 @@ static BOOL DSHPetKCDelete(void) {
 @property (nonatomic, strong) NSMutableArray<NSDictionary<NSString *, NSString *> *> *history;
 @property (nonatomic, copy, nullable) NSString *usageDay;
 @property (nonatomic, strong, nullable) NSURLSessionDataTask *task;
+// S-AI4：本次请求附带的屏幕文字（只在一次请求内有效，见 ask:screenText:completion:）
+@property (nonatomic, copy, nullable) NSString *screenTextForThisRequest;
 
 - (NSString *)baseURL;
 - (NSString *)modelName;
@@ -270,6 +272,17 @@ static void DSHPetPrefsWrite(NSString *key, id value) {
     NSMutableArray *msgs = [NSMutableArray array];
     [msgs addObject:@{@"role": @"system", @"content": [self systemPrompt]}];
 
+    // S-AI4：屏幕内容单独作为一条 system 消息塞进去。
+    // 为什么不拼进 systemPrompt：一是要标"这是屏幕看到的，不是你记得的"，
+    // 二是拼进去会被状态六行挤到后面，模型容易忽略；独立一条权重更高。
+    if (self.screenTextForThisRequest.length > 0) {
+        NSString *screen = [NSString stringWithFormat:
+            @"【你现在看到的屏幕】（这是用户手机当前界面上的文字，不是聊天记录）\n%@\n"
+            @"回答要求：就这块内容说一句人话，可以有一句自己的判断；不要复述全部文字。",
+            self.screenTextForThisRequest];
+        [msgs addObject:@{@"role": @"system", @"content": screen}];
+    }
+
     NSInteger rounds = [self confInt:@"aiContextRounds" fb:10];
     if (rounds > 0 && self.history.count > 0) {
         NSInteger keep = rounds * 2;
@@ -299,6 +312,19 @@ static void DSHPetPrefsWrite(NSString *key, id value) {
 
 - (void)ask:(NSString *)text completion:(DSHPetChatCompletion)completion {
     [self ask:text imageData:nil completion:completion];
+}
+
+// S-AI4：带屏幕内容问（"看看屏幕"专用）。
+// screenText 只在这一次请求里有效，进来先设、出口清，避免上一屏的内容粘在下一句话上。
+- (void)ask:(NSString *)text screenText:(NSString *)screenText completion:(DSHPetChatCompletion)completion {
+    self.screenTextForThisRequest = screenText;
+    __weak DSHPetChat *weakSelf = self;
+    [self ask:text imageData:nil completion:^(NSString *reply, NSString *error) {
+        weakSelf.screenTextForThisRequest = nil;
+        if (completion) {
+            completion(reply, error);
+        }
+    }];
 }
 
 - (void)ask:(NSString *)text imageData:(NSData *)imageData completion:(DSHPetChatCompletion)completion {
