@@ -23,6 +23,7 @@
 
 @interface PSListController : UIViewController
 - (NSArray *)specifiers;
+- (NSArray *)loadSpecifiersFromPlistName:(NSString *)name target:(id)target;
 - (void)reloadSpecifiers;
 - (id)readPreferenceValue:(PSSpecifier *)specifier;
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier;
@@ -30,10 +31,39 @@
 
 static NSString *const kDSHPetPrefsDomain = @"com.vboxai.littlefatlady.prefs";
 
+// 面板这边写日志只能进 NSLog（没有 DSHPetLog 那套文件日志），
+// 但排查"空白页"时这行很关键：Console.app 里 filter 进程 Settings 就能看到。
+static void DSHPetPrefsWarn(NSString *msg) {
+    NSLog(@"[DSHPetPrefs] %@", msg);
+}
+
 @interface DSHPetPrefsRootListController : PSListController
 @end
 
-@implementation DSHPetPrefsRootListController
+@implementation DSHPetPrefsRootListController {
+    NSArray *_cached;   // 自己缓存，不依赖父类私有的 _specifiers
+}
+
+// 必须自己实现。PSListController **不会**自动去读 bundle 里的 Root.plist：
+// 少了这个方法，bundle 能正常加载、页面也能推进来，但列表是空的 —— 就是用户看到的"一片空白"。
+// 注意别指望父类的 _specifiers ivar：Preferences 里它是私有成员，编译期看不到。
+- (NSArray *)specifiers {
+    if (!_cached) {
+        NSArray *loaded = [self loadSpecifiersFromPlistName:@"Root" target:self];
+        _cached = loaded ?: @[];
+        if (_cached.count == 0) {
+            DSHPetPrefsWarn(@"Root.plist 没读出任何 specifier（bundle 里可能缺文件）");
+        }
+    }
+    return _cached;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // 标题写死在代码里：Root.plist 的 title 在部分系统上不会自动带到导航栏，
+    // 结果就是顶部空白 —— 用户看到的"一片空白"有一半是这个。
+    self.title = @"小肥娘";
+}
 
 // 返回 nil 就会落到 Root.plist 里每个 specifier 的 default 上。
 // 这样「第一次装、什么键都没写过」时界面显示的是代码里的真默认值，而不是空开关。

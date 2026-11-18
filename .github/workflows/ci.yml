@@ -107,6 +107,12 @@ jobs:
           echo "素材桶："; ls "$DEST"
           echo "总大小：$(du -sh "$DEST" | cut -f1)"
 
+      - name: 维护脚本权限（git 不保证 755，dpkg 只认带 x 位的 postrm）
+        run: |
+          set -e
+          chmod 0755 "packages/ios/layout/DEBIAN/postrm" 2>/dev/null || true
+          ls -l packages/ios/layout/DEBIAN/ || true
+
       - name: 编译
         run: |
           BUILD=$(git rev-list --count HEAD)

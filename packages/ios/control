@@ -6,5 +6,5 @@ Description: 小肥娘 —— 住在 DSH 里的桌面宠物，iOS 越狱移植�
 Maintainer: vbox-Ai
 Author: vbox-Ai
 Section: Tweaks
-Depends: firmware (>= 17.0), preferenceloader, ellekit | mobilesubstrate
+Depends: firmware (>= 15.0), preferenceloader, ellekit | mobilesubstrate
 Tag: purpose::extension

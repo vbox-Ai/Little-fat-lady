@@ -84,13 +84,15 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
             NSArray<NSString *> *inner = [fm contentsOfDirectoryAtPath:full error:NULL] ?: @[];
             for (NSString *m in [inner sortedArrayUsingSelector:@selector(compare:)]) {
                 NSString *mlow = m.lowercaseString;
-                if ([mlow hasSuffix:@".mov"] || [mlow hasSuffix:@".mp4"] || [mlow hasSuffix:@".m4v"]) {
+                if ([mlow hasSuffix:@".mov"] || [mlow hasSuffix:@".mp4"] || [mlow hasSuffix:@".m4v"]
+                    || [mlow hasSuffix:@".webp"]) {
                     [deep addObject:[n stringByAppendingPathComponent:m]];
                 }
             }
             continue;
         }
-        if ([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"]) {
+        if ([low hasSuffix:@".mov"] || [low hasSuffix:@".mp4"] || [low hasSuffix:@".m4v"]
+            || [low hasSuffix:@".webp"]) {
             [top addObject:n];
         }
     }
@@ -438,14 +440,15 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
 }
 
-- (void)reloadAsset {
+- (BOOL)reloadAsset {
     NSURL *url = [self findFirstMovie];
     if (!url) {
         DSHPetLog(@"render", @"player-no-asset", @"info", @{ @"dir": kPetAssetDir });
         [self teardown];
-        return;
+        return NO;
     }
     [self playClipAtURL:url];
+    return YES;
 }
 
 - (void)observeEnd {
@@ -478,7 +481,10 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     if (!host) return NO;
     _host = host;
     _displaySize = size;
-    [self reloadAsset];
+    // 判据必须是"找到可用素材"，不能是"图层是否已建出来"：
+    // webp 走 CALayer + contents，首帧解码可能还没回来，按图层存在性判断会被上层误读成
+    // "没装素材" —— 桌面只剩绿方块，而且动画状态机被整段跳过，永远不动。
+    BOOL hasAsset = [self reloadAsset];
 
     if (_contentLayer) {
         [_host.layer addSublayer:_contentLayer];
@@ -489,7 +495,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
         [self syncLayerFrame];
     }
     if (_player) [self play];
-    return _layer != nil || _contentLayer != nil;
+    return hasAsset || _layer != nil || _contentLayer != nil;
 }
 
 - (void)setDisplaySize:(CGSize)size {
@@ -555,7 +561,7 @@ static NSString *const kPetAssetDirFallback = @"/var/jb/Library/Application Supp
     DSHPetLog(@"render", @"player-pause", @"debug", nil);
 }
 
-- (BOOL)hasAsset { return _layer != nil || _contentLayer != nil; }
+- (BOOL)hasAsset { return _webpSrc != NULL || _webpFrames.count > 0 || _layer != nil || _contentLayer != nil; }
 
 - (CGSize)naturalSize {
     if (_compositeReady && _naturalSize.width > 1) return _naturalSize;

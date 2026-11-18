@@ -1,0 +1,34 @@
+#!/bin/sh
+# 小肥娘 · 卸载清理
+#
+# 用户明确要求：卸载插件时把插件自己的数据一起清掉，别留残留。
+# 铁律（血泪）：
+#   1. 绝不在这里 killall SpringBoard / sbreload —— dpkg 事务还在跑，杀了会卡在
+#      half-configured，只能手进 Filza 重跑 postinst 才救得回来（0.1.0-42 事故）。
+#   2. 只删我们自己建的路径，路径写死、不用通配符扫库。
+#   3. 认不出的参数就什么都不做。
+#
+# 参数：
+#   remove  —— 卸载（保留配置文件本应如此，但用户要求连数据一起清）
+#   purge   —— 彻底清除
+#   upgrade —— 升级，绝对不碰用户数据
+
+set -u
+
+case "${1:-}" in
+    remove|purge) ;;
+    *) exit 0 ;;
+esac
+
+# 宠物数据：素材（安装时从包里铺的）、ui.json、日志、doctor.txt、禁用开关
+rm -rf "/var/mobile/Library/DSHPet" 2>/dev/null || true
+rm -rf "/var/jb/var/mobile/Library/DSHPet" 2>/dev/null || true
+
+# 设置面板域（rootless 下 Preferences 可能落在 /var/jb 里，两个位置都试）
+rm -f "/var/mobile/Library/Preferences/com.vboxai.littlefatlady.prefs.plist" 2>/dev/null || true
+rm -f "/var/jb/var/mobile/Library/Preferences/com.vboxai.littlefatlady.prefs.plist" 2>/dev/null || true
+
+# 告诉用户怎么让桌面把残留的浮层摘掉：不替他重启，只说一句
+echo "小肥娘：插件数据已清理。注销（respring）后桌面上不会再有小肥娘。"
+
+exit 0

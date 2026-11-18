@@ -22,7 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)attachToHostView:(UIView *)host size:(CGSize)size;
 
 /// 重新扫描素材目录（S9 下载器灌完素材后调）。
-- (void)reloadAsset;
+- (BOOL)reloadAsset;   // YES = 找到可用素材（含 webp）；NO = 一个都没有
 
 - (void)setDisplaySize:(CGSize)size;
 - (void)play;
