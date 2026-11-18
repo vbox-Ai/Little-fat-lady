@@ -833,6 +833,18 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         [[DSHPetAnimator shared] playRandomFromCategory:@"idle"];
         [[DSHPetState shared] setActivity:DSHPetActivityIdle];
     };
+
+    // 避让气泡：气泡是 host 的直接子视图，frame 天然就是 host 坐标，不用转换。
+    // 只在气泡可见时生效；不可见返回 CGRectZero，行走逻辑就当没有避让区。
+    __weak DSHPetOverlay *weakSelfForWalk = self;
+    _walk.avoidRectProvider = ^CGRect {
+        DSHPetOverlay *s = weakSelfForWalk;
+        if (!s || !s->_bubble || !s->_bubble.visible) {
+            return CGRectZero;
+        }
+        return s->_bubble.frame;
+    };
+
     [_walk start];
 
     DSHPetLog(@"walk", @"setup", @"info",
