@@ -388,6 +388,11 @@ static const NSTimeInterval kCDGreet = 3600.0;
     if (![self isOn:@"personaEnabled" fallback:YES] || [self quietNow]) {
         return;
     }
+    // 一小时最多问候一次：进程重启（SpringBoard 重载）不该每次都重打招呼
+    if (![self cooledDown:@"greet" window:kCDGreet]) {
+        self.greetedToday = YES;
+        return;
+    }
     self.greetedToday = YES;
     // timeGreet 是嵌套结构（按相位取数组），用通用取值器取不到，直接走 path 形式
     NSString *path = [@"timeGreet." stringByAppendingString:[self greetKeyForPhase:[DSHPetState shared].phase]];
