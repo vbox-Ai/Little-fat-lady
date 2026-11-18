@@ -151,7 +151,9 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     DSHPetRow *aiOn = [self rowSwitch:@"接大模型回话" key:@"aiEnabled" dflt:NO];
     DSHPetRow *aiBase = [DSHPetRow new];
     aiBase.title = @"服务地址"; aiBase.key = @"aiBaseURL"; aiBase.kind = DSHPetRowKindText;
-    aiBase.defaultValue = @"http://192.168.1.230:3425/v1";
+    // 不写死任何地址：仓库是公开的，塞私网 IP 等于把自己的网关贴出去。
+    // 局域网示例 http://192.168.1.230:3425/v1；出门要用能公网访问的那个。
+    aiBase.defaultValue = @"";
     DSHPetRow *aiModel = [DSHPetRow new];
     aiModel.title = @"模型名"; aiModel.key = @"aiModel"; aiModel.kind = DSHPetRowKindText;
     aiModel.defaultValue = @"";
@@ -172,6 +174,55 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     DSHPetRow *aiClear = [DSHPetRow new];
     aiClear.title = @"清除 API Key"; aiClear.kind = DSHPetRowKindAction; aiClear.actionName = @"aiClearKey";
 
+    // S-TTS2：语音合成（方案 §11.7 / §十三）。
+    // engine=native 时下面几项都不生效（走系统 AVSpeechSynthesizer）；
+    // 选 volc 要 AppID + Access Token（Cluster 默认 volcano_tts）；选 openai 要地址 + Key。
+    // 面板不做联动灰化：PSListController 的 reloadData 在这套自绘面板上容易踩 estimatedHeight 的坑，
+    // 改成「填了才用」，填错也不崩——dylib 侧失败一律静默回落系统合成。
+    DSHPetRow *ttsEngine = [self rowChoice:@"语音引擎" key:@"ttsEngine"
+                                    values:@[@"native", @"volc", @"openai"]
+                                    titles:@[@"系统原生", @"豆包·火山", @"OpenAI 兼容"]];
+    ttsEngine.defaultValue = @"native";
+    DSHPetRow *ttsAppID = [DSHPetRow new];
+    ttsAppID.title = @"豆包 AppID"; ttsAppID.key = @"ttsAppID"; ttsAppID.kind = DSHPetRowKindText;
+    ttsAppID.defaultValue = @"";
+    DSHPetRow *ttsToken = [DSHPetRow new];
+    ttsToken.title = @"豆包 Access Token"; ttsToken.key = @"ttsToken"; ttsToken.kind = DSHPetRowKindSecret;
+    ttsToken.defaultValue = @"";
+    DSHPetRow *ttsCluster = [DSHPetRow new];
+    ttsCluster.title = @"Cluster"; ttsCluster.key = @"ttsCluster"; ttsCluster.kind = DSHPetRowKindText;
+    ttsCluster.defaultValue = @"volcano_tts";
+    DSHPetRow *ttsVoiceType = [DSHPetRow new];
+    ttsVoiceType.title = @"音色码"; ttsVoiceType.key = @"ttsVoiceType"; ttsVoiceType.kind = DSHPetRowKindText;
+    ttsVoiceType.defaultValue = @"BV700_streaming";
+    DSHPetRow *ttsBase = [DSHPetRow new];
+    ttsBase.title = @"接口地址（OpenAI 兼容）"; ttsBase.key = @"ttsBaseURL"; ttsBase.kind = DSHPetRowKindText;
+    ttsBase.defaultValue = @"";
+    DSHPetRow *ttsModel = [DSHPetRow new];
+    ttsModel.title = @"模型名"; ttsModel.key = @"ttsModel"; ttsModel.kind = DSHPetRowKindText;
+    ttsModel.defaultValue = @"tts-1";
+    DSHPetRow *ttsVoice = [DSHPetRow new];
+    ttsVoice.title = @"音色"; ttsVoice.key = @"ttsVoice"; ttsVoice.kind = DSHPetRowKindText;
+    ttsVoice.defaultValue = @"alloy";
+    DSHPetRow *ttsAPIKey = [DSHPetRow new];
+    ttsAPIKey.title = @"接口 Key"; ttsAPIKey.key = @"ttsAPIKey"; ttsAPIKey.kind = DSHPetRowKindSecret;
+    ttsAPIKey.defaultValue = @"";
+    DSHPetRow *ttsSpeed = [self rowChoice:@"语速" key:@"ttsSpeed"
+                                   values:@[@0.8, @1.0, @1.2]
+                                   titles:@[@"慢", @"正常", @"快"]];
+    ttsSpeed.defaultValue = @1.0;
+    DSHPetRow *ttsPitch = [self rowChoice:@"音调" key:@"ttsPitch"
+                                   values:@[@0.9, @1.0, @1.1]
+                                   titles:@[@"低", @"正常", @"高"]];
+    ttsPitch.defaultValue = @1.0;
+    DSHPetRow *ttsTest = [DSHPetRow new];
+    ttsTest.title = @"试听一句"; ttsTest.kind = DSHPetRowKindAction; ttsTest.actionName = @"ttsTest";
+    DSHPetRow *ttsPurge = [DSHPetRow new];
+    ttsPurge.title = @"清空语音缓存"; ttsPurge.kind = DSHPetRowKindAction; ttsPurge.actionName = @"ttsPurge";
+    DSHPetRow *ttsHint = [DSHPetRow new];
+    ttsHint.title = @"未配置或合成失败时"; ttsHint.kind = DSHPetRowKindInfo;
+    ttsHint.staticText = @"自动用系统声音";
+
     DSHPetRow *multi = [self rowSwitch:@"多开（多只小肥娘）" key:@"multiPetsEnabled" dflt:NO];    DSHPetRow *multiMax = [self rowChoice:@"最多几只" key:@"multiPetsMax"
                                    values:@[@1, @2, @3, @4, @5, @6, @7, @8]
                                    titles:@[@"1 只", @"2 只", @"3 只", @"4 只", @"5 只", @"6 只", @"7 只", @"8 只"]];
@@ -186,12 +237,15 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     doctor.title = @"自检报告路径"; doctor.kind = DSHPetRowKindInfo;
     doctor.staticText = @"/var/mobile/Library/DSHPet/doctor.txt";
 
-    _sectionTitles = @[@"宠物", @"物理与触感", @"人格与语音", @"会话气泡", @"大模型", @"多开", @"关于"];
+    _sectionTitles = @[@"宠物", @"物理与触感", @"人格与语音", @"会话气泡", @"大模型", @"语音合成", @"多开", @"关于"];
     _sections = @[@[petOn, edge, size],
                  @[grav, tilt, haptic, hapticLevel],
                  @[persona, voice, sfx, quiet],
                  @[bubble, bubbleStatus, bridge, base],
                  @[aiOn, aiBase, aiModel, aiKey, aiTemp, aiTokens, aiVision, aiTest, aiClear],
+                 @[ttsEngine, ttsAppID, ttsToken, ttsCluster, ttsVoiceType,
+                   ttsBase, ttsModel, ttsVoice, ttsAPIKey, ttsSpeed, ttsPitch,
+                   ttsHint, ttsTest, ttsPurge],
                  @[multi, multiMax, perSession],
                  @[ver, link, doctor]];
 }
@@ -400,9 +454,48 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     }
 }
 
+// 试听：面板在 Preferences 进程里，碰不到 SpringBoard 里的语音单例，
+// 所以发一条 Darwin 通知，让 dylib 侧用当前配置说一句。配置对不对，一耳朵就能听出来。
+- (void)probeTTS {
+    id rawEngine = DSHPetRead(@"ttsEngine");
+    NSString *engine = [rawEngine isKindOfClass:[NSString class]] ? (NSString *)rawEngine : @"native";
+    NSString *tip = nil;
+    if ([engine isEqualToString:@"volc"]) {
+        tip = @"将用「豆包·火山」合成。若没声音：确认 AppID 与 Access Token 已填、Cluster 是 volcano_tts、音色码已开通。";
+    } else if ([engine isEqualToString:@"openai"]) {
+        tip = @"将用「OpenAI 兼容」合成。若没声音：确认接口地址以 /v1 结尾、模型与音色名有效、Key 正确。";
+    } else {
+        tip = @"当前是「系统原生」引擎（不联网）。换成豆包或 OpenAI 兼容才会有专属音色。";
+    }
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         CFSTR("com.vboxai.littlefatlady.tts.test"),
+                                         NULL, NULL, true);
+    UIAlertController *ac = [UIAlertController alertControllerWithTitle:@"已让小肥娘说一句"
+                                                               message:tip
+                                                        preferredStyle:UIAlertControllerStyleAlert];
+    [ac addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:ac animated:YES completion:nil];
+}
+
+// 清缓存：同样走 Darwin 通知，dylib 侧删 ~/Library/Application Support/DSHPet/tts/*.mp3
+- (void)purgeTTSCache {
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         CFSTR("com.vboxai.littlefatlady.tts.purge"),
+                                         NULL, NULL, true);
+    UIAlertController *ac = [UIAlertController alertControllerWithTitle:@"已清空语音缓存"
+                                                               message:@"下次说话会重新合成。缓存只在温度/语速/音色不变时才复用，改过任一项本来也会重合成。"
+                                                        preferredStyle:UIAlertControllerStyleAlert];
+    [ac addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:ac animated:YES completion:nil];
+}
+
 - (void)runActionRow:(DSHPetRow *)row {
     if ([row.actionName isEqualToString:@"aiTest"]) {
         [self testAIConnection];
+    } else if ([row.actionName isEqualToString:@"ttsTest"]) {
+        [self probeTTS];
+    } else if ([row.actionName isEqualToString:@"ttsPurge"]) {
+        [self purgeTTSCache];
     } else if ([row.actionName isEqualToString:@"aiClearKey"]) {
         DSHPetWrite(@"aiKeyPending", @"");
         DSHPetWrite(@"aiKeyStored", @NO);
