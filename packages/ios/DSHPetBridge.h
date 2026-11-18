@@ -2,7 +2,14 @@
 
 // 与宿主 DSH 的桥：轮询 /dsh-pet-7340/state，把会话信息抛给气泡。
 // 只读，绝不调 /quit、不写 /config（见方案 §19 红线）。
-extern NSString *const DSHPetSayNotification;   // userInfo: {text, kind}
+//
+// 注意：这个头文件必须有 nullability 区间（NS_ASSUME_NONNULL_BEGIN/END）。
+// 仓库开着 -Werror，`-Wnullability-completeness` 会因为「一个头里混用了带标记与不带标记的指针」
+// 直接编译失败 —— 上一版就是漏了这个区间、CI 红了。
+// 真的可能为 nil 的属性/参数，逐个标 _Nullable，别指望默认值。
+NS_ASSUME_NONNULL_BEGIN
+
+extern NSString *const DSHPetSayNotification;    // userInfo: {text, kind}
 extern NSString *const DSHPetStatusNotification; // userInfo: {state, task}
 // S6c：最近活跃会话集合变了（新增/过期），userInfo: {count}
 extern NSString *const DSHPetSessionsNotification;
@@ -10,11 +17,14 @@ extern NSString *const DSHPetSessionsNotification;
 @interface DSHPetBridge : NSObject
 
 + (instancetype)shared;
-- (void)startWithBase:(NSString *)base token:(NSString *)token interval:(NSTimeInterval)interval;
+- (void)startWithBase:(NSString *)base token:(nullable NSString *)token interval:(NSTimeInterval)interval;
 - (void)stop;
 - (void)pollOnce;
-@property (nonatomic, readonly) NSString *lastError;
-@property (nonatomic, readonly) NSString *workState;
+
+/// 最近一次失败原因；成功时为 nil。
+@property (nonatomic, readonly, nullable) NSString *lastError;
+/// 宿主报上来的工作状态（working / thinking / idle …）；还不知道时为 nil。
+@property (nonatomic, readonly, nullable) NSString *workState;
 
 /// S6c 多开：最近活跃的会话（`@[@{@"id":…, @"lastSeen":…, @"text":…}, …]`，按最近活跃排序）。
 /// 依据是 `/state` 里 notify 事件带的 `sessionId` —— 上游没有单独的"会话列表"接口，
@@ -28,3 +38,5 @@ extern NSString *const DSHPetSessionsNotification;
                             NSString *_Nullable errorText))done;
 
 @end
+
+NS_ASSUME_NONNULL_END
