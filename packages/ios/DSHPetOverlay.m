@@ -15,6 +15,7 @@
 #import "DSHPetAnimator.h"
 #import "DSHPetState.h"
 #import "DSHPetScheduler.h"
+#import "DSHPetVoice.h"
 
 // S2：透明浮层骨架 + 一个可拖动的方块。
 // 本阶段只证明四件事，不做宠物：
@@ -197,6 +198,30 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         if (![st isKindOfClass:[NSString class]] || !st.length) return;
         [me->_bubble showText:[me labelForWorkState:st] duration:4.0];
         [me anchorBubble];
+    }];
+
+    // S-V3：说话起止 → TALKING 态。
+    // 说明：现在没有 viseme（嘴型）素材，所谓"口型"实际是 B 档替代 ——
+    // 说话时切到 talk 分桶（没有就 idle），并把 activity 置 Talking 让调度器别插小动作。
+    // 等以后拿到逐帧嘴型素材，把这里换成 Voice.mouthFrameHandler 驱动 sprite 即可，其余不动。
+    [[NSNotificationCenter defaultCenter] addObserverForName:DSHPetVoiceDidStartNotification
+                                                     object:nil
+                                                      queue:[NSOperationQueue mainQueue]
+                                                 usingBlock:^(NSNotification *note) {
+        DSHPetOverlay *me = weakSelf;
+        if (!me) return;
+        [[DSHPetState shared] setActivity:DSHPetActivityTalking];
+        if (![[DSHPetAnimator shared] playRandomFromCategory:@"talk"]) {
+            [[DSHPetAnimator shared] playRandomFromCategory:@"idle"];
+        }
+    }];
+    [[NSNotificationCenter defaultCenter] addObserverForName:DSHPetVoiceDidFinishNotification
+                                                     object:nil
+                                                      queue:[NSOperationQueue mainQueue]
+                                                 usingBlock:^(NSNotification *note) {
+        DSHPetOverlay *me = weakSelf;
+        if (!me) return;
+        [[DSHPetState shared] setActivity:DSHPetActivityIdle];
     }];
 
     NSString *base = _cfg[@"bridgeBase"];
