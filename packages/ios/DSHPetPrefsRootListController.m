@@ -117,6 +117,11 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     DSHPetRow *petOn = [self rowSwitch:@"显示小肥娘" key:@"petEnabled" dflt:YES];
     // S-M1a：行走开关。关掉她就钉在原地（想截图/录屏时很有用）
     DSHPetRow *wander = [self rowSwitch:@"自动漫游（自己走来走去）" key:@"wanderEnabled" dflt:YES];
+    // S-M1b 漫游分区：她只在选定那一段来回走（嫌她乱跑就锁一边）
+    DSHPetRow *zone = [self rowChoice:@"漫游范围" key:@"wanderZone"
+                               values:@[@0, @1, @2, @3]
+                               titles:@[@"全屏", @"左半边", @"中间", @"右半边"]];
+    zone.defaultValue = @0;
     DSHPetRow *edge = [self rowChoice:@"贴边间距" key:@"edgePreset"
                                values:@[@0, @1, @2]
                                titles:@[@"贴紧", @"标准", @"宽松"]];
@@ -240,7 +245,7 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     doctor.staticText = @"/var/mobile/Library/DSHPet/doctor.txt";
 
     _sectionTitles = @[@"宠物", @"物理与触感", @"人格与语音", @"会话气泡", @"大模型", @"语音合成", @"多开", @"关于"];
-    _sections = @[@[petOn, wander, edge, size],
+    _sections = @[@[petOn, wander, zone, edge, size],
                  @[grav, tilt, haptic, hapticLevel],
                  @[persona, voice, sfx, quiet],
                  @[bubble, bubbleStatus, bridge, base],
