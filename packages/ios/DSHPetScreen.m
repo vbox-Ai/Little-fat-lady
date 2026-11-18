@@ -106,11 +106,24 @@ static const NSInteger kMaxDepth = 7;
               depth:(NSInteger)depth
                into:(NSMutableArray<NSString *> *)lines
                seen:(NSMutableSet<NSString *> *)seen
-              count:(NSInteger *)count {
+              count:(NSInteger *)count
+             secure:(BOOL *)secure {
     if (el == NULL || depth > kMaxDepth || *count >= kMaxNodes) {
         return;
     }
     *count += 1;
+
+    // 安全输入框判定：系统在做密码输入时会把它换成安全键盘那一层，
+    // 元素的 role 是 AXSecureTextField / AXPasswordTextField。
+    // 这比"看到密码两个字"可靠 —— 有些界面只是标题里写着"密码"两个字，并不敏感。
+    if (secure != NULL && *secure == NO) {
+        NSString *role = [self stringAttr:CFSTR("AXRole") of:el];
+        if (role.length > 0 &&
+            ([role rangeOfString:@"Secure" options:NSCaseInsensitiveSearch].location != NSNotFound ||
+             [role rangeOfString:@"Password" options:NSCaseInsensitiveSearch].location != NSNotFound)) {
+            *secure = YES;
+        }
+    }
 
     // 只要"人能看见的字"：标题、值、描述、无障碍标签。
     // 不取 AXFrame / AXRole 这类结构信息 —— 对说话没用，还占预算。
@@ -139,7 +152,8 @@ static const NSInteger kMaxDepth = 7;
                     depth:depth + 1
                      into:lines
                      seen:seen
-                    count:count];
+                    count:count
+                   secure:secure];
         if (*count >= kMaxNodes) {
             return;
         }
@@ -147,6 +161,10 @@ static const NSInteger kMaxDepth = 7;
 }
 
 + (nullable NSString *)currentScreenTextWithLimit:(NSInteger)maxChars {
+    return [self currentScreenTextWithLimit:maxChars secure:NULL];
+}
+
++ (nullable NSString *)currentScreenTextWithLimit:(NSInteger)maxChars secure:(BOOL *)secureOut {
     [self loadSymbolsOnce];
     if (!gLoaded) {
         return nil;
@@ -185,7 +203,11 @@ static const NSInteger kMaxDepth = 7;
         NSMutableArray<NSString *> *lines = [NSMutableArray array];
         NSMutableSet<NSString *> *seen = [NSMutableSet set];
         NSInteger count = 0;
-        [self collectFrom:start depth:0 into:lines seen:seen count:&count];
+        BOOL secure = NO;
+        [self collectFrom:start depth:0 into:lines seen:seen count:&count secure:&secure];
+        if (secureOut != NULL) {
+            *secureOut = secure;
+        }
 
         if (focused != NULL) {
             CFRelease(focused);
