@@ -337,6 +337,17 @@ static const NSTimeInterval kCDGreet = 3600.0;
 
 #pragma mark - 开口
 
+- (void)sayReply:(NSString *)text {
+    // 外部给的是成品句子，不再过台词库；但气泡/语音开关和免打扰仍然管着它
+    if (![self isOn:@"personaEnabled" fallback:YES]) {
+        return;
+    }
+    if ([self quietNow]) {
+        return;
+    }
+    [self sayText:text path:@"chat"];
+}
+
 - (void)sayPath:(NSString *)path {
     NSString *text = [[DSHPetLines shared] lineForPath:path];
     if (!text.length) {
