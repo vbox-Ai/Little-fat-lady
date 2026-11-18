@@ -1906,3 +1906,11 @@ deb 138.25MB / sha256 `deb4f58b…d977510` / Release `449080654` / CI `441521402
 - 落地：`BUNDLE_NAME = DSHPetPrefs` + `DSHPetPrefsRootListController`（`PSListController` 子类，读写钉 `com.vboxai.littlefatlady.prefs`）；资源 plist 走 `layout/`。
 - 关键坑：私有框架 `Preferences` 无 tbd → `-undefined dynamic_lookup`；bundle 目标不拷资源目录 → 资源必须落 `layout/`。
 - 同时修：最低系统 17.0→15.0（Dopamine 覆盖 iOS 15–16）、素材根候选扩容、`doctor.txt` 自检、8 秒未上屏气泡报原因、`DSHPetBoot` 里「白名单横扫式素材清理」改为只清根级老 mp4/mov 与废弃 color/matte（这条是 Dopamine 绿方块的直接成因）。
+
+## 23.4 S6d 收口 + 设置面板改纯 UIKit（2026-11-18，v0.1.0-136）
+
+- **长按菜单卡死**：根因是窗口 `hitTest` 只放行宠物框，系统 actionSheet 落在框外 → 触摸全丢。改自绘 `DSHPetMenuPanel`，窗口新增 `touchRoots` 放行"已注册交互视图"。详见 `docs/journal/S06.md §10`。
+- **设置面板空白**：`PSListController` 不自动读 `Root.plist`，补 `-specifiers` 也无效 → 整页改纯 UIKit（`UIViewController + UITableView` + `DSHPetRow` 模型 + `CFPreferences`），彻底断开私有框架依赖。
+- **顺带修的**：气泡点击（同一条 `hitTest` 规则）；`sizePct` 按"占屏宽比例"取值（0.16–0.62 小数档）。
+- 交付：commit `f341ccb5` / CI `44252185550` / deb 138.29MB / sha256 `a87f817f…b8f04` / Release `449625288`。
+- 剩余：S7b（检查更新、重置三档）、S6d 的「表情包」只做了"换个表情"轮播，没有挑选界面。
