@@ -198,16 +198,29 @@ static const NSTimeInterval kCDGreet = 3600.0;
             //   play(玩/杂项) 5 · eat(吃什么) 4 · idle(小动作) 3 · turn(转身) 2
             // 小动作不发台词：动作本身就是表达，配台词反而吵。
             NSArray<NSString *> *cats = @[@"play", @"eat", @"idle", @"turn"];
-            NSArray<NSNumber *> *weights = @[@5, @4, @3, @2];
+            // 权重走配置（actionWeightPlay/Eat/Idle/Turn），默认 5:4:3:2。
+            // 之所以不写死：素材包换了以后，哪一类多、哪一类少是会变的，
+            // 写死就得改代码重发版；放配置里用户自己也能调（面板欠一个入口，见 §15）。
+            NSArray<NSNumber *> *weights = @[
+                @([DSHPetPrefs doubleForKey:@"actionWeightPlay" fallback:5.0]),
+                @([DSHPetPrefs doubleForKey:@"actionWeightEat" fallback:4.0]),
+                @([DSHPetPrefs doubleForKey:@"actionWeightIdle" fallback:3.0]),
+                @([DSHPetPrefs doubleForKey:@"actionWeightTurn" fallback:2.0]),
+            ];
             NSInteger total = 0;
             for (NSNumber *w in weights) {
-                total += w.integerValue;
+                total += MAX(w.integerValue, 0);
+            }
+            if (total <= 0) {
+                // 四项都被调成 0：不要原地发愣，退回默认比例
+                weights = @[@5, @4, @3, @2];
+                total = 14;
             }
             NSInteger pick = (NSInteger)arc4random_uniform((uint32_t)MAX(total, 1));
             NSInteger acc = 0;
             NSString *picked = nil;
             for (NSUInteger i = 0; i < cats.count; i++) {
-                acc += weights[i].integerValue;
+                acc += MAX(weights[i].integerValue, 0);
                 if (pick < acc) {
                     picked = cats[i];
                     break;
