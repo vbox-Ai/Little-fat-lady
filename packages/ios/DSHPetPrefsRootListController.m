@@ -241,6 +241,42 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     return _sectionTitles[(NSUInteger)section];
 }
 
+// ── 覆盖 PSListController 私有 delegate 实现（防空 specifier 崩溃）──────────────
+// 崩溃根因（真机 2026-11-18 19:25，Preferences EXC_BAD_ACCESS KERN_INVALID_ADDRESS 0x38）：
+//   _table.estimatedRowHeight=46 非 0 → reloadData 调 delegate 的
+//   tableView:estimatedHeightForRowAtIndexPath:，而 delegate 是 self（PSListController 子类），
+//   iOS 17 的 PSListController 实现了这个方法，内部走 PSListControllerDefaultAppearanceProvider，
+//   provider 读不存在的 specifier（空指针 +0x38）→ SIGSEGV。
+// 修法：显式实现以下方法覆盖父类，全部走自绘表的固定/自动值，永不进 specifier 渲染链。
+
+- (CGFloat)tableView:(UITableView *)tv estimatedHeightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 46.0;
+}
+
+- (CGFloat)tableView:(UITableView *)tv heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return UITableViewAutomaticDimension;
+}
+
+- (CGFloat)tableView:(UITableView *)tv heightForHeaderInSection:(NSInteger)section {
+    return UITableViewAutomaticDimension;
+}
+
+- (CGFloat)tableView:(UITableView *)tv heightForFooterInSection:(NSInteger)section {
+    return 0.0;
+}
+
+- (UIView *)tableView:(UITableView *)tv viewForHeaderInSection:(NSInteger)section {
+    return nil;  // 交给 titleForHeaderInSection 显示默认标题
+}
+
+- (UIView *)tableView:(UITableView *)tv viewForFooterInSection:(NSInteger)section {
+    return nil;
+}
+
+- (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)section {
+    return nil;
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     DSHPetRow *row = _sections[(NSUInteger)indexPath.section][(NSUInteger)indexPath.row];
     static NSString *cid = @"dshpet";
