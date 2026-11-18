@@ -13,6 +13,8 @@
 #import <CoreMotion/CoreMotion.h>
 #import "DSHPetPlayer.h"
 #import "DSHPetAnimator.h"
+#import "DSHPetState.h"
+#import "DSHPetScheduler.h"
 
 // S2：透明浮层骨架 + 一个可拖动的方块。
 // 本阶段只证明四件事，不做宠物：
@@ -627,6 +629,11 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         @"screenH": @(b.height),
         @"scale": @([[UIScreen mainScreen] scale]),
     });
+
+    // S-P2：浮层起来了才启动人格调度器 —— 它每 tick 要发通知给气泡、
+    // 要播动画给 player，早于浮层启动会白发一轮。
+    [[DSHPetScheduler shared] start];
+
     return YES;
 }
 
@@ -635,6 +642,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (void)onTap:(UITapGestureRecognizer *)g {
     [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"tap" minInterval:0.10];
     [[DSHPetAnimator shared] handleTap];
+    // S-P2：把"被戳"这件事告诉状态机与调度器（改 mood/energy，必要时说一句）
+    [[DSHPetScheduler shared] handleEvent:DSHPetEventTap];
     NSInteger taps = [_cfg[@"taps"] integerValue] + 1;
     _cfg[@"taps"] = @(taps);
     DSHPetSaveUIConfig(_cfg);
@@ -697,6 +706,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     if (g.state == UIGestureRecognizerStateBegan) {
         [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"drag" minInterval:0.12];
         [[DSHPetAnimator shared] handleDragBegin];
+        // S-P2：拎起来 = 一次 Drag 事件（状态机里 mood 略降，会嘟囔一句）
+        [[DSHPetScheduler shared] handleEvent:DSHPetEventDrag];
         [self stopPhysics];
         _panStartCenter = _box.center;
         _panLastPoint = [_window convertPoint:[g locationInView:_window] toView:nil];
@@ -723,6 +734,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
     if (g.state == UIGestureRecognizerStateEnded || g.state == UIGestureRecognizerStateCancelled) {
         [[DSHPetAnimator shared] handleDragEnd];
+        // S-P2：放手 = Drop 事件（落地会有音效与"被放下来"的反应）
+        [[DSHPetScheduler shared] handleEvent:DSHPetEventDrop];
         CGPoint v = [g velocityInView:_window];
         // 手势速度优先；太慢就当放下（不抛）
         CGFloat speed = hypot(v.x, v.y);
