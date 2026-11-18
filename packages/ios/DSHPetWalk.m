@@ -170,6 +170,25 @@ static const CGFloat kRestMax = 16.0;
     if (target > hi || target < lo) {
         target = goRight ? (curX - dist) : (curX + dist);
     }
+
+    // 避让气泡：气泡是浮层，不挡点击，但停在她正上方会互相压字。
+    // 做法是把落在气泡矩形（左右各外扩 kAvoidPad）里的目标点推到最近的一侧，
+    // 而不是整段放弃——放弃会让"想往右边走"变成"原地不动"，看起来像卡住。
+    CGRect avoid = CGRectZero;
+    if (_avoidRectProvider) {
+        avoid = _avoidRectProvider();
+    }
+    if (!CGRectIsEmpty(avoid)) {
+        CGFloat pad = 40.0;
+        CGFloat left = avoid.origin.x - pad;
+        CGFloat right = avoid.origin.x + avoid.size.width + pad;
+        if (target > left && target < right) {
+            CGFloat toLeft = target - left;
+            CGFloat toRight = right - target;
+            target = (toLeft <= toRight) ? left : right;
+        }
+    }
+
     target = [self clampX:target];
 
     if (fabs(target - curX) < _minDist * 0.5) {
