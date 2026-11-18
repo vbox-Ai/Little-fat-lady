@@ -267,7 +267,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
     [self setupBubbleInRoot:root.view];
 
-    // S6c：会话集合变了（新的 DSH 会话出现 / 久不活跃过期）→ 调整额外宠物数量    if (!_sessionsObs) {
+    // S6c：会话集合变了（新的 DSH 会话出现 / 久不活跃过期）→ 调整额外宠物数量
+    if (!_sessionsObs) {
         __weak DSHPetOverlay *weakSess = self;
         _sessionsObs = [[NSNotificationCenter defaultCenter] addObserverForName:DSHPetSessionsNotification
                                                                         object:nil
