@@ -8,10 +8,11 @@ export THEOS_PACKAGE_SCHEME = rootless
 
 # 版本号由 scripts/build-deb.sh 生成 DSHPetVersion.h（VERSION-BUILD），这里不重复定义。
 export TWEAK_NAME = DSHPet
-export DSHPet_FILES = Tweak.xm DSHPetBoot.m DSHPetOverlay.m DSHPetAnimator.m DSHPetPlayer.m DSHPetAssets.m DSHPetBubble.m DSHPetBridge.m DSHPetHaptics.m DSHPetPrefs.m DSHPetPet.m DSHPetCrew.m DSHPetTodoPanel.m DSHPetMenuPanel.m DSHPetState.m DSHPetLines.m DSHPetVoice.m DSHPetSFX.m DSHPetScheduler.m
+export DSHPet_FILES = Tweak.xm DSHPetBoot.m DSHPetOverlay.m DSHPetAnimator.m DSHPetPlayer.m DSHPetAssets.m DSHPetBubble.m DSHPetBridge.m DSHPetHaptics.m DSHPetPrefs.m DSHPetPet.m DSHPetCrew.m DSHPetTodoPanel.m DSHPetMenuPanel.m DSHPetState.m DSHPetLines.m DSHPetVoice.m DSHPetSFX.m DSHPetScheduler.m DSHPetChat.m
 export DSHPet_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-incomplete-umbrella
 export DSHPet_FRAMEWORKS = UIKit QuartzCore AVFoundation
 export DSHPet_FRAMEWORKS += CoreMotion
+export DSHPet_FRAMEWORKS += Security
 export DSHPet_LIBRARIES = substrate
 
 # 设置面板：代码 bundle（不是纯 plist 面板）。
