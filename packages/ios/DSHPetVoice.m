@@ -4,9 +4,12 @@
 #import <AVFoundation/AVFoundation.h>
 #import <math.h>
 
+NSString *const DSHPetVoiceDidStartNotification = @"DSHPetVoiceDidStart";
+NSString *const DSHPetVoiceDidFinishNotification = @"DSHPetVoiceDidFinish";
+
+
 // 分段阈值：一次念超过 40 字会喘不上气，按标点切开分段播
-static const NSUInteger kChunkChars = 40;
-// 预估超过这个时长才 duck 音乐（短句直接叠在歌上，不打断用户）
+static const NSUInteger kChunkChars = 40;// 预估超过这个时长才 duck 音乐（短句直接叠在歌上，不打断用户）
 static const NSTimeInterval kDuckThreshold = 3.0;
 // 口型刷新间隔（10Hz 够用，再快人眼看不出）
 static const NSTimeInterval kMouthTick = 0.10;
@@ -264,6 +267,10 @@ static NSString *DSHPetCNMoney(NSString *intPart, NSString *decPart) {
     self.speaking = YES;
     self.speakCount += 1;
     [self startMouth];
+    // 渲染层靠这条把宠物切成 TALKING（说话手势 + 待机暂停）
+    [[NSNotificationCenter defaultCenter] postNotificationName:DSHPetVoiceDidStartNotification
+                                                       object:self
+                                                     userInfo:@{@"path": path ?: @"", @"chars": @(clean.length)}];
 
     for (NSString *piece in chunks) {
         AVSpeechUtterance *u = [AVSpeechUtterance speechUtteranceWithString:piece];
@@ -537,6 +544,9 @@ static NSString *DSHPetCNMoney(NSString *intPart, NSString *decPart) {
         self.speaking = NO;
         [self stopMouth];
         [self endDuckSoon];
+        [[NSNotificationCenter defaultCenter] postNotificationName:DSHPetVoiceDidFinishNotification
+                                                            object:self
+                                                          userInfo:@{@"reason": @"finish"}];
     }
 }
 
@@ -548,6 +558,9 @@ static NSString *DSHPetCNMoney(NSString *intPart, NSString *decPart) {
     if (self.liveUtterances <= 0) {
         self.speaking = NO;
         [self stopMouth];
+        [[NSNotificationCenter defaultCenter] postNotificationName:DSHPetVoiceDidFinishNotification
+                                                            object:self
+                                                          userInfo:@{@"reason": @"cancel"}];
     }
 }
 
