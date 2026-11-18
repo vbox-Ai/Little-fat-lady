@@ -437,8 +437,8 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
         [req setValue:[@"Bearer " stringByAppendingString:pending] forHTTPHeaderField:@"Authorization"];
     }
     __weak DSHPetPrefsRootListController *weakSelf = self;
-    [[NSURLSession sharedSession] dataTaskWithRequest:req
-                                    completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err) {
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:req
+                                                                completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err) {
         dispatch_async(dispatch_get_main_queue(), ^{
             DSHPetPrefsRootListController *s = weakSelf;
             if (!s) return;
@@ -466,7 +466,8 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
             }
             [s showAlertTitle:[NSString stringWithFormat:@"服务端返回 %ld", (long)code] message:@"地址通了，但这个接口没按 OpenAI 兼容格式返回。"];
         });
-    }] resume];
+    }];
+    [task resume];
 }
 
 - (void)showAlertTitle:(NSString *)title message:(NSString *)message {
