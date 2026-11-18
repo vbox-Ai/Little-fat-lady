@@ -46,6 +46,8 @@ typedef NS_ENUM(NSInteger, DSHPetRowKind) {
     DSHPetRowKindText,         // 弹输入框改字符串
     DSHPetRowKindInfo,         // 只读
     DSHPetRowKindLink,         // 打开链接
+    DSHPetRowKindSecret,       // 输入密钥：写进「待迁移」键，dylib 首次用到时搬进 Keychain
+    DSHPetRowKindAction,       // 点一下执行动作（测试连接 / 清除密钥）
 };
 
 @interface DSHPetRow : NSObject
@@ -57,6 +59,7 @@ typedef NS_ENUM(NSInteger, DSHPetRowKind) {
 @property (nonatomic, copy) NSArray<NSString *> *valueTitles; // choice：显示名
 @property (nonatomic, copy) NSString *staticText;           // info：显示内容
 @property (nonatomic, copy) NSString *linkURL;              // link
+@property (nonatomic, copy) NSString *actionName;           // action：动作名
 @end
 
 @implementation DSHPetRow
@@ -141,8 +144,35 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     DSHPetRow *sfx = [self rowSwitch:@"动作音效" key:@"sfxEnabled" dflt:YES];
     DSHPetRow *quiet = [self rowSwitch:@"免打扰（23:00–08:00 不说话）" key:@"quietHours" dflt:NO];
 
-    DSHPetRow *multi = [self rowSwitch:@"多开（多只小肥娘）" key:@"multiPetsEnabled" dflt:NO];
-    DSHPetRow *multiMax = [self rowChoice:@"最多几只" key:@"multiPetsMax"
+    // S-AI1：大模型（方案 §十四）。这里每一项 dylib 侧都真的读：
+    //   aiEnabled / aiBaseURL / aiModel / aiTemperature / aiMaxTokens / aiVisionEnabled。
+    // Key 例外：面板跟 dylib 不是一个进程，碰不到 Keychain item，所以只写 aiKeyPending，
+    // dylib 第一次调用时搬进 Keychain 并把明文抹掉（见 DSHPetChat -apiKey）。
+    DSHPetRow *aiOn = [self rowSwitch:@"接大模型回话" key:@"aiEnabled" dflt:NO];
+    DSHPetRow *aiBase = [DSHPetRow new];
+    aiBase.title = @"服务地址"; aiBase.key = @"aiBaseURL"; aiBase.kind = DSHPetRowKindText;
+    aiBase.defaultValue = @"http://192.168.1.230:3425/v1";
+    DSHPetRow *aiModel = [DSHPetRow new];
+    aiModel.title = @"模型名"; aiModel.key = @"aiModel"; aiModel.kind = DSHPetRowKindText;
+    aiModel.defaultValue = @"";
+    DSHPetRow *aiKey = [DSHPetRow new];
+    aiKey.title = @"API Key"; aiKey.key = @"aiKeyPending"; aiKey.kind = DSHPetRowKindSecret;
+    aiKey.defaultValue = @"";
+    DSHPetRow *aiTemp = [self rowChoice:@"说话活跃度（温度）" key:@"aiTemperature"
+                                 values:@[@0.5, @0.9, @1.2]
+                                 titles:@[@"稳", @"中", @"活"]];
+    aiTemp.defaultValue = @0.9;
+    DSHPetRow *aiTokens = [self rowChoice:@"最长回复" key:@"aiMaxTokens"
+                                   values:@[@80, @120, @200]
+                                   titles:@[@"短（80）", @"中（120）", @"长（200）"]];
+    aiTokens.defaultValue = @120;
+    DSHPetRow *aiVision = [self rowSwitch:@"允许看截图（多模态，费钱）" key:@"aiVisionEnabled" dflt:NO];
+    DSHPetRow *aiTest = [DSHPetRow new];
+    aiTest.title = @"测试连接"; aiTest.kind = DSHPetRowKindAction; aiTest.actionName = @"aiTest";
+    DSHPetRow *aiClear = [DSHPetRow new];
+    aiClear.title = @"清除 API Key"; aiClear.kind = DSHPetRowKindAction; aiClear.actionName = @"aiClearKey";
+
+    DSHPetRow *multi = [self rowSwitch:@"多开（多只小肥娘）" key:@"multiPetsEnabled" dflt:NO];    DSHPetRow *multiMax = [self rowChoice:@"最多几只" key:@"multiPetsMax"
                                    values:@[@1, @2, @3, @4, @5, @6, @7, @8]
                                    titles:@[@"1 只", @"2 只", @"3 只", @"4 只", @"5 只", @"6 只", @"7 只", @"8 只"]];
     multiMax.defaultValue = @3;
@@ -156,11 +186,12 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     doctor.title = @"自检报告路径"; doctor.kind = DSHPetRowKindInfo;
     doctor.staticText = @"/var/mobile/Library/DSHPet/doctor.txt";
 
-    _sectionTitles = @[@"宠物", @"物理与触感", @"人格与语音", @"会话气泡", @"多开", @"关于"];
+    _sectionTitles = @[@"宠物", @"物理与触感", @"人格与语音", @"会话气泡", @"大模型", @"多开", @"关于"];
     _sections = @[@[petOn, edge, size],
                  @[grav, tilt, haptic, hapticLevel],
                  @[persona, voice, sfx, quiet],
                  @[bubble, bubbleStatus, bridge, base],
+                 @[aiOn, aiBase, aiModel, aiKey, aiTemp, aiTokens, aiVision, aiTest, aiClear],
                  @[multi, multiMax, perSession],
                  @[ver, link, doctor]];
 }
@@ -227,6 +258,16 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
             id v = [self valueForRow:row];
             return [v isKindOfClass:[NSString class]] ? v : @"";
         }
+        case DSHPetRowKindSecret: {
+            // 只显示"有没有"，永远不回显内容（回显就等于把 Key 摊在屏幕上）
+            BOOL stored = DSHPetReadBool(@"aiKeyStored", NO);
+            NSString *pending = DSHPetRead(@"aiKeyPending");
+            if (stored) return @"已设置";
+            if ([pending isKindOfClass:[NSString class]] && [(NSString *)pending length] > 0) return @"待保存";
+            return @"未设置";
+        }
+        case DSHPetRowKindAction:
+            return @"";
         case DSHPetRowKindInfo:
             return row.staticText;
         case DSHPetRowKindLink:
@@ -295,6 +336,7 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     cell.accessoryView = nil;
     cell.accessoryType = UITableViewCellAccessoryNone;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    cell.textLabel.textColor = [UIColor labelColor];
 
     switch (row.kind) {
         case DSHPetRowKindSwitch: {
@@ -308,9 +350,15 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
             break;
         }
         case DSHPetRowKindChoice:
-        case DSHPetRowKindText: {
+        case DSHPetRowKindText:
+        case DSHPetRowKindSecret: {
             cell.detailTextLabel.text = [self trailingTextForRow:row];
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            break;
+        }
+        case DSHPetRowKindAction: {
+            cell.detailTextLabel.text = nil;
+            cell.textLabel.textColor = [UIColor systemBlueColor];
             break;
         }
         case DSHPetRowKindLink:
@@ -343,9 +391,90 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
         if (u) [[UIApplication sharedApplication] openURL:u options:@{} completionHandler:nil];
         return;
     }
-    if (row.kind == DSHPetRowKindText) {
+    if (row.kind == DSHPetRowKindText || row.kind == DSHPetRowKindSecret) {
         [self promptForText:row indexPath:indexPath];
+        return;
     }
+    if (row.kind == DSHPetRowKindAction) {
+        [self runActionRow:row];
+    }
+}
+
+- (void)runActionRow:(DSHPetRow *)row {
+    if ([row.actionName isEqualToString:@"aiTest"]) {
+        [self testAIConnection];
+    } else if ([row.actionName isEqualToString:@"aiClearKey"]) {
+        DSHPetWrite(@"aiKeyPending", @"");
+        DSHPetWrite(@"aiKeyStored", @NO);
+        UIAlertController *ac = [UIAlertController alertControllerWithTitle:@"已清除"
+                                                                   message:@"Key 已从本机删除，下次启动后生效。"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+        [ac addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];
+        [self presentViewController:ac animated:YES completion:nil];
+        [_table reloadData];
+    }
+}
+
+// 测试连接：面板自己发一次 GET {base}/models。
+// 用「待迁移」里的 Key（用户刚粘贴、dylib 还没搬走的那把）；已经搬进 Keychain 之后
+// 面板就看不见了，这时只能测「地址通不通」，所以提示语分开写，不糊弄。
+- (void)testAIConnection {
+    NSString *base = DSHPetRead(@"aiBaseURL");
+    if (![base isKindOfClass:[NSString class]] || [(NSString *)base length] == 0) {
+        base = @"http://192.168.1.230:3425/v1";
+    }
+    while ([base hasSuffix:@"/"]) base = [base substringToIndex:base.length - 1];
+    NSURL *url = [NSURL URLWithString:[base stringByAppendingString:@"/models"]];
+    if (!url) {
+        [self showAlertTitle:@"地址不合法" message:base];
+        return;
+    }
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.timeoutInterval = 8.0;
+    NSString *pending = DSHPetRead(@"aiKeyPending");
+    BOOL hasPending = [pending isKindOfClass:[NSString class]] && [(NSString *)pending length] > 0;
+    if (hasPending) {
+        [req setValue:[@"Bearer " stringByAppendingString:pending] forHTTPHeaderField:@"Authorization"];
+    }
+    __weak DSHPetPrefsRootListController *weakSelf = self;
+    [[NSURLSession sharedSession] dataTaskWithRequest:req
+                                    completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            DSHPetPrefsRootListController *s = weakSelf;
+            if (!s) return;
+            if (err) {
+                [s showAlertTitle:@"连不上" message:[NSString stringWithFormat:@"%@\n\n检查：地址、端口、是否同一网络。", err.localizedDescription]];
+                return;
+            }
+            NSInteger code = [(NSHTTPURLResponse *)resp statusCode];
+            if (code == 401 || code == 403) {
+                [s showAlertTitle:[NSString stringWithFormat:@"地址通了，但 Key 无效（%ld）", (long)code]
+                          message:hasPending ? @"这把 Key 被拒绝了，换一把再试。" : @"Key 已存进钥匙串，面板看不到；如需重测请先重新粘贴一次。"];
+                return;
+            }
+            if (code >= 200 && code < 300) {
+                NSString *body = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+                NSInteger count = 0;
+                id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+                if ([json isKindOfClass:[NSDictionary class]] && [json[@"data"] isKindOfClass:[NSArray class]]) {
+                    count = [(NSArray *)json[@"data"] count];
+                }
+                [s showAlertTitle:@"连接正常"
+                          message:count > 0 ? [NSString stringWithFormat:@"发现 %ld 个模型。", (long)count]
+                                            : (body.length ? @"服务端有响应。" : @"服务端有响应，但没返回模型列表。")];
+                return;
+            }
+            [s showAlertTitle:[NSString stringWithFormat:@"服务端返回 %ld", (long)code] message:@"地址通了，但这个接口没按 OpenAI 兼容格式返回。"];
+        });
+    }] resume];
+}
+
+- (void)showAlertTitle:(NSString *)title message:(NSString *)message {
+    UIAlertController *ac = [UIAlertController alertControllerWithTitle:title
+                                                                message:message
+                                                         preferredStyle:UIAlertControllerStyleAlert];
+    [ac addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:ac animated:YES completion:nil];
 }
 
 - (void)onSwitchChanged:(UISwitch *)sw {
@@ -362,9 +491,13 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
                                                                 message:nil
                                                          preferredStyle:UIAlertControllerStyleAlert];
     id cur = [self valueForRow:row];
+    BOOL secret = (row.kind == DSHPetRowKindSecret);
     [ac addTextFieldWithConfigurationHandler:^(UITextField *tf) {
-        tf.text = [cur isKindOfClass:[NSString class]] ? cur : @"";
-        tf.keyboardType = UIKeyboardTypeURL;
+        // 密钥行永远不回显旧值：回显一次就等于把这把 Key 摊在屏幕上被人看到
+        tf.text = secret ? @"" : ([cur isKindOfClass:[NSString class]] ? cur : @"");
+        tf.placeholder = secret ? @"粘贴 API Key（留空保存＝删除）" : nil;
+        tf.secureTextEntry = secret;
+        tf.keyboardType = secret ? UIKeyboardTypeASCIICapable : UIKeyboardTypeURL;
         tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
         tf.autocorrectionType = UITextAutocorrectionTypeNo;
     }];
@@ -372,8 +505,9 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     __weak DSHPetPrefsRootListController *weakSelf = self;
     [ac addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
         NSString *text = ac.textFields.firstObject.text ?: @"";
-        DSHPetWrite(row.key, text);
         DSHPetPrefsRootListController *s = weakSelf;
+        // 密钥行：空串保存 = 删除（跟面板文案一致），dylib 看到空就不搬进 Keychain
+        DSHPetWrite(row.key, text);
         [s->_table reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
     }]];
     [self presentViewController:ac animated:YES completion:nil];
