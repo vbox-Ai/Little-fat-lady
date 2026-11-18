@@ -1883,3 +1883,19 @@ SHOW ──(锁屏/后台)──> HIDDEN ──(回前台且未过期)──> SH
 发虚（选片权）与卡顿（71MB 主线程预解码）双双结案，S7a 面板 + S7b 尺寸滑块随版交付。
 deb 138.25MB / sha256 `deb4f58b…d977510` / Release `449080654` / CI `44152140287`。
 剩余：S6c 多开（≤8 只，`sessionId` 过滤，≈3 人日）、S7c 重置开关（R34 走「恢复默认」自复位开关，不编二进制）。
+
+## 23.2 交付：v0.1.0-123（S6c 多开 + 面板载入修复）
+
+- **面板打不开**（120 版「未能载入软件包…找不到可执行文件」）已修：入口 plist 去掉
+  `detail=PSListController` + `isController`。纯 plist bundle 没有 `CFBundleExecutable`，
+  带了 `detail` 就会被 Preferences 当代码包 load。详见 `docs/journal/S07.md §13`。
+- **S6c 多开落地**：主宠（Overlay）不动，第 2..N 只走新的 `DSHPetPet`（独立播放器 +
+  状态机 + 物理 + 手势），由 `DSHPetCrew` 统一驱动（一个 accelerometer 订阅、
+  一个 CADisplayLink、全静止自动停表）。出生从屏幕上方随机 x 落下，
+  落地后按轴轻微排斥不叠。面板新增「多开」组：启用 / 最多几只 1–8 / 每只跟一个会话。
+  详见 `docs/journal/S06.md §7`。
+- 会话来源仍是 `/state` 的 `sessionId`（上游没有会话列表接口），`DSHPetBridge` 维护
+  `sessionMap` + 15 分钟 TTL，数量跟着"最近真的说过话的会话"变。
+- 交付：commit `507fc0ae` / CI `44200784441` / deb 138.26MB /
+  sha256 `31cb8937…7311dc` / Release `449353660`。
+- 剩余：S6d（长按菜单 / 待办面板 / 表情包）、S7c（重置开关，R34 走自复位开关）。
