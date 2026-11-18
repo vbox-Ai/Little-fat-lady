@@ -9,6 +9,8 @@
 #import "DSHPetCrew.h"
 #import "DSHPetTodoPanel.h"
 #import "DSHPetMenuPanel.h"
+#import "DSHPetWalk.h"
+#import "DSHPetScreen.h"
 #import "DSHPetAssets.h"
 #import <CoreMotion/CoreMotion.h>
 #import "DSHPetPlayer.h"
@@ -151,6 +153,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     id _sessionsObs;      // S6c：会话集合变化时调整多开数量
     DSHPetTodoPanel *_todoPanel;   // S6d：长按弹出的待办清单
     DSHPetMenuPanel *_menuPanel;   // S6d：长按弹出的操作菜单（自绘，不用 UIAlertController）
+    DSHPetWalk *_walk;             // S-M1a：行走（单独时钟，拖拽可随时打断）
     NSTimer *_hideTimer;           // S6d：「隐藏 1 小时」的自动恢复
 }
 
@@ -270,7 +273,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         return;
     }
 
-    NSArray<NSString *> *titles = @[@"跟她说话", @"待办清单", @"换个表情", @"连接状态", @"隐藏 1 小时", @"取消"];
+    NSArray<NSString *> *titles = @[@"跟她说话", @"看看屏幕", @"待办清单", @"换个表情", @"连接状态", @"隐藏 1 小时", @"取消"];
     __weak DSHPetOverlay *weakSelf = self;
     _menuPanel = [[DSHPetMenuPanel alloc] initWithTitle:@"小肥娘"
                                                  titles:titles
@@ -279,10 +282,11 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         if (!s) return;
         switch (index) {
             case 0: [s chatWithPet]; break;
-            case 1: [s showTodoPanel]; break;
-            case 2: [s shuffleExpression]; break;
-            case 3: [s showBridgeStatus]; break;
-            case 4: [s hideForAWhile:3600.0]; break;
+            case 1: [s lookAtScreen]; break;
+            case 2: [s showTodoPanel]; break;
+            case 3: [s shuffleExpression]; break;
+            case 4: [s showBridgeStatus]; break;
+            case 5: [s hideForAWhile:3600.0]; break;
             default: break;
         }
     }];
@@ -327,8 +331,65 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     [host presentViewController:ac animated:YES completion:nil];
 }
 
-- (void)sendChatText:(NSString *)raw {
-    NSString *text = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+#pragma mark - S-AI4 看看屏幕
+
+// 读当前界面文字 → 交给大模型说一句人话。
+// 三个前提缺一不可，缺哪个就用她自己的语气说明，绝不弹系统错误：
+//   1. 无障碍树可用（老系统 / 关了辅助功能的机器可能拿不到）
+//   2. 大模型已配置
+//   3. 屏幕真的读到了字（空白界面、纯图片界面读不到）
+- (void)lookAtScreen {
+    if (![DSHPetScreen available]) {
+        [[DSHPetScheduler shared] sayReply:@"这台机器上我看不清屏幕呢…库"];
+        DSHPetLog(@"screen", @"unavailable", @"warn", nil);
+        return;
+    }
+    if (![[DSHPetChat shared] isConfigured]) {
+        [[DSHPetScheduler shared] sayReply:@"想让我看屏幕的话，得先把大模型接上呀…去设置里填一下，库…"];
+        return;
+    }
+
+    NSString *screen = [DSHPetScreen currentScreenTextWithLimit:900];
+    if (screen.length == 0) {
+        [[DSHPetScheduler shared] sayReply:@"这一屏好像没什么字…换个有内容的界面再叫我？"];
+        DSHPetLog(@"screen", @"empty-result", @"warn", nil);
+        return;
+    }
+
+    // 隐私红线（§11.8）：读到的若是"正在输密码"这类界面，直接拒绝，连请求都不发。
+    NSArray *forbidden = @[@"支付密码", @"请输入密码", @"验证码", @"银行卡", @"身份证", @"安全键盘", @"面容 ID", @"指纹"];
+    for (NSString *w in forbidden) {
+        if ([screen rangeOfString:w].location != NSNotFound) {
+            [[DSHPetScheduler shared] sayReply:@"这个界面我不看哦，密码这类东西我不碰的，库…"];
+            DSHPetLog(@"screen", @"refused-sensitive", @"info", @{ @"hit": w });
+            return;
+        }
+    }
+
+    [[DSHPetScheduler shared] handleEvent:DSHPetEventChat];
+    [[DSHPetState shared] setActivity:DSHPetActivityTalking];
+    DSHPetLog(@"screen", @"ask", @"debug", @{ @"chars": @(screen.length) });
+
+    __weak DSHPetOverlay *weakSelf = self;
+    [[DSHPetChat shared] ask:@"你看看我现在屏幕上是什么，说一句。"
+                   screenText:screen
+                   completion:^(NSString *reply, NSString *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            DSHPetOverlay *s = weakSelf;
+            if (!s) return;
+            if (reply.length > 0) {
+                [[DSHPetScheduler shared] sayReply:reply];
+            } else {
+                // 看不清就说看不清，不暴露 HTTP 码
+                [[DSHPetScheduler shared] sayReply:@"唔…我盯了半天没看明白，再说一次？"];
+                DSHPetLog(@"screen", @"reply-fail", @"warn", @{ @"code": error ?: @"unknown" });
+            }
+            [[DSHPetState shared] setActivity:DSHPetActivityIdle];
+        });
+    }];
+}
+
+- (void)sendChatText:(NSString *)raw {    NSString *text = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (text.length == 0) {
         return;
     }
@@ -682,6 +743,10 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     //   · 手指一开始动就超 allowableMovement → 长按自己失败，pan 立刻接管。
     // 反过来给 pan 加"必须等长按失败"，拖宠物会先卡 0.45 秒，手感直接废掉。
 
+    // S-M1a：行走。放在手势注册之后 —— 走路由 center 驱动，和手势互不影响；
+    // 但必须等 _box 有真实尺寸，否则 clampX 算出来的范围是反的。
+    [self setupWalk];
+
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 
     __weak DSHPetOverlay *weakSelf = self;
@@ -724,8 +789,46 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 #pragma mark 交互
 
-- (void)onTap:(UITapGestureRecognizer *)g {
-    [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"tap" minInterval:0.10];
+#pragma mark - S-M1a 行走
+
+- (void)setupWalk {
+    if (!_box) {
+        return;
+    }
+    UIView *host = _box.superview;
+    if (!host) {
+        return;
+    }
+    _walk = [[DSHPetWalk alloc] initWithPetView:_box hostView:host];
+
+    NSDictionary *anim = _cfg[@"animations"];
+    NSDictionary *moves = [anim isKindOfClass:[NSDictionary class]] ? anim[@"moves"] : nil;
+    NSDictionary *df = [moves isKindOfClass:[NSDictionary class]] ? moves[@"default"] : nil;
+    if ([df isKindOfClass:[NSDictionary class]]) {
+        if ([df[@"minDist"] doubleValue] > 0) _walk.minDist = [df[@"minDist"] doubleValue];
+        if ([df[@"maxDist"] doubleValue] > 0) _walk.maxDist = [df[@"maxDist"] doubleValue];
+        if ([df[@"margin"] doubleValue] > 0) _walk.margin = [df[@"margin"] doubleValue];
+    }
+    _walk.enabled = _cfg[@"wanderEnabled"] ? [_cfg[@"wanderEnabled"] boolValue] : YES;
+
+    // 走路时播 move 分桶；停下回 idle。分桶都没有就静默（不报错、不卡住）
+    _walk.onStartWalking = ^{
+        if (![[DSHPetAnimator shared] playRandomFromCategory:@"move"]) {
+            [[DSHPetAnimator shared] playRandomFromCategory:@"idle"];
+        }
+        [[DSHPetState shared] setActivity:DSHPetActivityWander];
+    };
+    _walk.onStopWalking = ^{
+        [[DSHPetAnimator shared] playRandomFromCategory:@"idle"];
+        [[DSHPetState shared] setActivity:DSHPetActivityIdle];
+    };
+    [_walk start];
+
+    DSHPetLog(@"walk", @"setup", @"info",
+              @{ @"enabled": @(_walk.enabled), @"minDist": @(_walk.minDist), @"maxDist": @(_walk.maxDist) });
+}
+
+- (void)onTap:(UITapGestureRecognizer *)g {    [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"tap" minInterval:0.10];
     [[DSHPetAnimator shared] handleTap];
     // S-P2：把"被戳"这件事告诉状态机与调度器（改 mood/energy，必要时说一句）
     [[DSHPetScheduler shared] handleEvent:DSHPetEventTap];
@@ -793,6 +896,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         [[DSHPetAnimator shared] handleDragBegin];
         // S-P2：拎起来 = 一次 Drag 事件（状态机里 mood 略降，会嘟囔一句）
         [[DSHPetScheduler shared] handleEvent:DSHPetEventDrag];
+        [_walk pause];      // 拎起来就别自己走了
         [self stopPhysics];
         _panStartCenter = _box.center;
         _panLastPoint = [_window convertPoint:[g locationInView:_window] toView:nil];
@@ -831,6 +935,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
             [self startPhysicsWithVelocity:v];
         } else {
             [self clampAndPersist];
+            [_walk resume];   // 没抛出去就直接落地，立刻恢复行走计时
         }
     }
 }
@@ -948,6 +1053,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
             _vel = CGPointZero;
             [self stopPhysics];
             [self clampAndPersist];
+            [_walk resume];   // 落稳了才恢复行走，空中蹬腿很怪
             DSHPetLog(@"physics", @"settle", @"debug", @{ @"x": @(c.x), @"y": @(c.y) });
             return;
         }
