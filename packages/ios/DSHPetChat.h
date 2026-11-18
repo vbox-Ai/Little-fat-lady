@@ -33,6 +33,10 @@ typedef void (^DSHPetChatCompletion)(NSString *_Nullable reply, NSString *_Nulla
 // 带上图片问（§14.8）。imageData 传 nil 等价于 ask:。
 - (void)ask:(NSString *)text imageData:(nullable NSData *)imageData completion:(DSHPetChatCompletion)completion;
 
+// S-AI4：带上"当前屏幕上的文字"问（长按菜单「看看屏幕」走这条）。
+// screenText 只对这一次请求生效，下一次 ask: 不会带上。
+- (void)ask:(NSString *)text screenText:(nullable NSString *)screenText completion:(DSHPetChatCompletion)completion;
+
 // 清空上下文与今日计数（面板「清除对话记录」用）
 - (void)resetConversation;
 
