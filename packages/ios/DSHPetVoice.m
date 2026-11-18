@@ -1,5 +1,6 @@
 #import "DSHPetVoice.h"
 #import "DSHPetState.h"
+#import "DSHPetTTS.h"
 #import "DSHPetBoot.h"
 #import <AVFoundation/AVFoundation.h>
 #import <math.h>
@@ -92,7 +93,7 @@ static NSString *DSHPetCNMoney(NSString *intPart, NSString *decPart) {
 
 #pragma mark -
 
-@interface DSHPetVoice () <AVSpeechSynthesizerDelegate>
+@interface DSHPetVoice () <AVSpeechSynthesizerDelegate, AVAudioPlayerDelegate>
 @property (nonatomic, strong) AVSpeechSynthesizer *synth;
 @property (nonatomic, readwrite) BOOL speaking;
 @property (nonatomic, readwrite) NSInteger speakCount;
@@ -101,6 +102,9 @@ static NSString *DSHPetCNMoney(NSString *intPart, NSString *decPart) {
 @property (nonatomic, strong, nullable) NSTimer *duckRestoreTimer;
 @property (nonatomic, strong, nullable) NSTimer *mouthTimer;
 @property (nonatomic, assign) NSInteger mouthPhase;
+// 远端 TTS：一个播放器 + 一个序号（防旧请求回来把新话掐掉）
+@property (nonatomic, strong, nullable) AVAudioPlayer *remotePlayer;
+@property (nonatomic, assign) NSInteger remoteSeq;
 
 - (void)handleInterruption:(NSNotification *)note;
 - (void)applyCategoryDucked:(BOOL)ducked;
@@ -112,9 +116,23 @@ static NSString *DSHPetCNMoney(NSString *intPart, NSString *decPart) {
 - (float)rateForTone:(DSHPetTone)tone;
 - (float)pitchForTone:(DSHPetTone)tone;
 - (float)volumeForTone:(DSHPetTone)tone base:(float)base;
+- (void)speakNative:(NSString *)text path:(nullable NSString *)path volume:(float)volume;
+- (void)speakRemote:(NSString *)text path:(nullable NSString *)path volume:(float)volume;
+- (void)finishRemoteWithNotification:(BOOL)notify;
 @end
 
 @implementation DSHPetVoice
+
+// 面板「试听一句」回调：走的是同一条 speak: 通路，远端引擎通不通一耳朵就听出来。
+static void DSHPetVoiceOnProbe(CFNotificationCenterRef center,
+                               void *observer,
+                               CFNotificationName name,
+                               const void *object,
+                               CFDictionaryRef info) {
+    (void)center; (void)name; (void)object; (void)info;
+    DSHPetVoice *me = (__bridge DSHPetVoice *)observer;
+    [me speak:@"爹爹，我是小肥娘，库…这句是试听。" path:@"probe" volume:1.0f];
+}
 
 + (instancetype)shared {
     static DSHPetVoice *s = nil;
@@ -146,6 +164,14 @@ static NSString *DSHPetCNMoney(NSString *intPart, NSString *decPart) {
                                              selector:@selector(handleInterruption:)
                                                  name:AVAudioSessionInterruptionNotification
                                                object:nil];
+
+    // 面板「试听一句」：面板在另一个进程里，用 Darwin 通知喊我说话。
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                    (__bridge const void *)(self),
+                                    DSHPetVoiceOnProbe,
+                                    CFSTR("com.vboxai.littlefatlady.tts.test"),
+                                    NULL,
+                                    CFNotificationSuspensionBehaviorDeliverImmediately);
     return self;
 }
 
@@ -240,6 +266,113 @@ static NSString *DSHPetCNMoney(NSString *intPart, NSString *decPart) {
     if (!self.enabled) {
         return;
     }
+    // 远端 TTS 优先：配置齐全才走，任何一步失败都静默回落系统合成（桌宠不能因为网不好就哑掉）。
+    DSHPetTTS *tts = [DSHPetTTS shared];
+    [tts reloadConfig];
+    if ([tts isReady]) {
+        [self speakRemote:text path:path volume:volume];
+        return;
+    }
+    [self speakNative:text path:path volume:volume];
+}
+
+- (void)speakRemote:(NSString *)text path:(nullable NSString *)path volume:(float)volume {
+    NSString *clean = [self preprocess:text ?: @""];
+    if (clean.length == 0) {
+        return;
+    }
+    [self stopSpeakingNow];
+    [self configureAudioSession];
+
+    DSHPetTone tone = [DSHPetState shared].tone;
+    float vol = [self volumeForTone:tone base:volume];
+    if (vol <= 0.01f) {
+        return;
+    }
+
+    self.remoteSeq += 1;
+    NSInteger seq = self.remoteSeq;
+    self.speaking = YES;
+    self.speakCount += 1;
+    [self startMouth];
+    [[NSNotificationCenter defaultCenter] postNotificationName:DSHPetVoiceDidStartNotification
+                                                       object:self
+                                                     userInfo:@{@"path": path ?: @"", @"chars": @(clean.length)}];
+
+    __weak DSHPetVoice *weakSelf = self;
+    [[DSHPetTTS shared] synthesize:clean completion:^(NSURL *file, NSError *err) {
+        DSHPetVoice *me = weakSelf;
+        if (!me) {
+            return;
+        }
+        if (seq != me.remoteSeq) {
+            return;   // 已经被新的一句顶掉了，别把新话掐了
+        }
+        if (!file || err) {
+            DSHPetLog(@"voice", @"remote-fallback", @"warn", @{
+                @"reason": err.localizedDescription ?: @"?",
+            });
+            [me finishRemoteWithNotification:NO];
+            [me speakNative:text path:path volume:volume];
+            return;
+        }
+        NSError *playErr = nil;
+        AVAudioPlayer *p = [[AVAudioPlayer alloc] initWithContentsOfURL:file error:&playErr];
+        if (!p) {
+            DSHPetLog(@"voice", @"remote-play-fail", @"warn", @{
+                @"reason": playErr.localizedDescription ?: @"?",
+            });
+            [me finishRemoteWithNotification:NO];
+            [me speakNative:text path:path volume:volume];
+            return;
+        }
+        p.delegate = me;
+        p.volume = MAX(0.0f, MIN(1.0f, vol));
+        p.enableRate = YES;
+        p.rate = MAX(0.5f, MIN(2.0f, [me rateForTone:tone]));
+        me.remotePlayer = p;
+        [p play];
+        DSHPetLog(@"voice", @"speak-remote", @"debug", @{
+            @"chars": @(clean.length),
+            @"path": path ?: @"-",
+        });
+    }];
+}
+
+- (void)finishRemoteWithNotification:(BOOL)notify {
+    [self.remotePlayer stop];
+    self.remotePlayer = nil;
+    self.speaking = NO;
+    [self stopMouth];
+    [self endDuckSoon];
+    if (notify) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:DSHPetVoiceDidFinishNotification
+                                                           object:self
+                                                         userInfo:@{}];
+    }
+}
+
+- (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag {
+    if (player != self.remotePlayer) {
+        return;
+    }
+    [self finishRemoteWithNotification:YES];
+}
+
+- (void)audioPlayerDecodeErrorDidOccur:(AVAudioPlayer *)player error:(NSError *)error {
+    DSHPetLog(@"voice", @"remote-decode-error", @"warn", @{
+        @"reason": error.localizedDescription ?: @"?",
+    });
+    if (player != self.remotePlayer) {
+        return;
+    }
+    [self finishRemoteWithNotification:YES];
+}
+
+- (void)speakNative:(NSString *)text path:(nullable NSString *)path volume:(float)volume {
+    if (!self.enabled) {
+        return;
+    }
     NSString *clean = [self preprocess:text ?: @""];
     if (clean.length == 0) {
         return;
@@ -311,6 +444,16 @@ static NSString *DSHPetCNMoney(NSString *intPart, NSString *decPart) {
 }
 
 - (void)stopSpeakingNow {
+    // 远端播放器也要停，否则系统合成停了、mp3 还在念
+    self.remoteSeq += 1;
+    @try {
+        if (self.remotePlayer) {
+            [self.remotePlayer stop];
+            self.remotePlayer = nil;
+        }
+    } @catch (NSException *e) {
+        DSHPetLog(@"voice", @"stop-remote-exception", @"warn", @{@"name": e.name ?: @"?"});
+    }
     @try {
         if (self.synth.isSpeaking || self.synth.isPaused) {
             [self.synth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
