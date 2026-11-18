@@ -27,8 +27,13 @@
 #import <UIKit/UIKit.h>
 
 // PSListController 是 Preferences 私有框架里的类，SDK 没有头文件。
-// 只前向声明；链接期用 -undefined dynamic_lookup，运行期由宿主 Preferences 进程提供。
-@class PSListController;
+// 这里给它一个最小接口声明（父类 UIViewController，声明用到的 specifiers），
+// 让编译器看到完整类链 —— view / title / presentViewController: 等 UIViewController
+// 成员才能解析。只写 @class 前向声明会让编译器以为新类没有基类，全部 -Werror 报错。
+// 链接期用 -undefined dynamic_lookup，运行期由宿主 Preferences 进程提供真实实现。
+@interface PSListController : UIViewController
+- (NSArray *)specifiers;
+@end
 
 static NSString *const kDSHPetPrefsDomain = @"com.vboxai.littlefatlady.prefs";
 static NSString *const kDSHPetRepoURL = @"https://github.com/vbox-Ai/Little-fat-lady";
