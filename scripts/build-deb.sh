@@ -29,7 +29,7 @@ make package FINALPACKAGE=1 \
      PACKAGE_VERSION="$DEBVER" \
      THEOS_PACKAGE_SCHEME=rootless \
      ARCHS="arm64 arm64e" \
-     TARGET=iphone:clang:latest:17.0
+     TARGET=iphone:clang:latest:15.0
 
 echo "== 产物 =="
 ls -l "$ROOT"/packages/ios/packages/*.deb

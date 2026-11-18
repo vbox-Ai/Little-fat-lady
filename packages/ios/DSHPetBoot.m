@@ -68,17 +68,34 @@ void DSHPetLog(NSString *mod, NSString *evt, NSString *lvl, NSDictionary *kv) {
         static BOOL ensured = NO;
         if (!ensured) { ensured = YES; DSHPetEnsureAssets(); }
     }
-    // 旧版本留下的 5 段占位演示片，会在真素材之外插一脚（"有时冒出蓝水母"）；
-    // 只删这几个固定名字，用户自己放的 main.* 不动。
-    // 旧包（单路 ProRes，无 alpha）整个清掉：留着会被索引器当成候选根，
-    // 抽到就播成一块黑底。只保留 color/ matte/ 与用户自己的 main.*。
+    // 诊断先落一份（拷贝还在后台跑，绿方块的机器要能马上把原因发回来）
+    {
+        static BOOL doctored = NO;
+        if (!doctored) { doctored = YES; DSHPetWriteDoctor(@"boot"); }
+    }
+    // 旧版本残留清理 —— 只清「确定是老东西」的那几样，不再按白名单横扫：
+    //   · 根级散放的 .mp4/.mov/.m4v（单路 ProRes 演示片 / 双路时代的散片）
+    //   · color/ 与 matte/ 两个目录（双路合成时代产物，里面全是 320×180 的 mp4，
+    //     留着会被索引器当成候选根，抽到就糊成一片——发虚问题的老根就在这）
+    // 之前这里写的是「不是 color/matte/main.* 就删」，等于每写一条日志
+    // 就把新素材的 idle/ move/ 分桶全删一遍：谁的分桶被删，谁就绿方块。
     {
         NSString *aroot = @"/var/mobile/Library/DSHPet/assets";
         NSArray<NSString *> *kids = [fm contentsOfDirectoryAtPath:aroot error:NULL] ?: @[];
         for (NSString *k in kids) {
-            if ([k isEqualToString:@"color"] || [k isEqualToString:@"matte"]) continue;
-            if ([k.lowercaseString hasPrefix:@"main."]) continue;
-            [fm removeItemAtPath:[aroot stringByAppendingPathComponent:k] error:NULL];
+            NSString *low = k.lowercaseString;
+            NSString *full = [aroot stringByAppendingPathComponent:k];
+            BOOL isDir = NO;
+            if (![fm fileExistsAtPath:full isDirectory:&isDir]) continue;
+            if (isDir) {
+                if ([low isEqualToString:@"color"] || [low isEqualToString:@"matte"]) {
+                    [fm removeItemAtPath:full error:NULL];
+                }
+                continue;
+            }
+            if ([low hasSuffix:@".mp4"] || [low hasSuffix:@".mov"] || [low hasSuffix:@".m4v"]) {
+                [fm removeItemAtPath:full error:NULL];
+            }
         }
     }
     for (NSString *n in @[ @"idle.mov", @"turn.mov", @"click.mov", @"drag.mov", @"sleep.mov", @"demo.mov" ]) {

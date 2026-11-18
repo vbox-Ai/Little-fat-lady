@@ -1,19 +1,11 @@
 #import <Foundation/Foundation.h>
 
-NS_ASSUME_NONNULL_BEGIN
-
-/// 素材可能落在这几个位置，按优先级返回（只返回真实存在的目录）。
-/// 为什么不止一个：rootless 包把 layout 装到 /var/jb 下，但 roothide 类越狱的
-/// dpkg / postinst 跑在"假根"里，看到的路径可能是 /Library/...；
-/// 而 SpringBoard 进程里 /var/jb 又是真的。谁看见哪个不确定，全部试一遍最省事。
+// 素材根候选（按优先级，已过滤成「真实存在的目录」）
 NSArray<NSString *> *DSHPetAssetRoots(void);
-
-/// 首次启动时把包内素材自拷贝到 /var/mobile/Library/DSHPet/assets。
-/// 参考 com.axs.appiconbundles 的做法：数据目录由插件自己建在 /var/mobile，
-/// 不依赖 dpkg 维护脚本（roothide 上 postinst 常常执行不了）。
-void DSHPetEnsureAssets(void);
-
-/// 第一个真正含有 .mov/.mp4 的素材根目录；没有就返回 nil。
+// 第一个确实含素材的根；找不到返回 nil
 NSString *_Nullable DSHPetFirstAssetRoot(void);
-
-NS_ASSUME_NONNULL_END
+// 启动时把随包素材自拷到运行目录（/var/mobile/Library/DSHPet/assets）
+void DSHPetEnsureAssets(void);
+// 把「这台机器上到底找了哪些路径、哪个有素材」写进 /var/mobile/Library/DSHPet/doctor.txt
+// 目的：绿方块（素材没找到）时让用户直接把这一份发回来，不用抓 syslog。
+void DSHPetWriteDoctor(NSString *_Nullable note);

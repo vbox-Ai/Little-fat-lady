@@ -5,16 +5,22 @@
 	<key>CFBundleIdentifier</key>
 	<string>com.vboxai.littlefatlady.prefs</string>
 	<key>CFBundleName</key>
-	<string>小肥娘</string>
+	<string>DSHPetPrefs</string>
 	<key>CFBundleDisplayName</key>
 	<string>小肥娘</string>
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
+	<key>CFBundleExecutable</key>
+	<string>DSHPetPrefs</string>
+	<key>NSPrincipalClass</key>
+	<string>DSHPetPrefsRootListController</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh_CN</string>
 </dict>
 </plist>

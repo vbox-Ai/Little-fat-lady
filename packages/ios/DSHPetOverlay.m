@@ -7,6 +7,7 @@
 #import "DSHPetHaptics.h"
 #import "DSHPetPrefs.h"
 #import "DSHPetCrew.h"
+#import "DSHPetAssets.h"
 #import <CoreMotion/CoreMotion.h>
 #import "DSHPetPlayer.h"
 #import "DSHPetAnimator.h"
@@ -87,6 +88,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 - (void)clampAndPersist;
 - (void)applySizeFromConfig;
 - (void)applyPrefsNow;
+- (void)showSelfCheckBubble;
 @end
 
 @implementation DSHPetOverlay {
@@ -265,8 +267,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
     [self setupBubbleInRoot:root.view];
 
-    // S6c：会话集合变了（新的 DSH 会话出现 / 久不活跃过期）→ 调整额外宠物数量
-    if (!_sessionsObs) {
+    // S6c：会话集合变了（新的 DSH 会话出现 / 久不活跃过期）→ 调整额外宠物数量    if (!_sessionsObs) {
         __weak DSHPetOverlay *weakSess = self;
         _sessionsObs = [[NSNotificationCenter defaultCenter] addObserverForName:DSHPetSessionsNotification
                                                                         object:nil
@@ -279,8 +280,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     }
 
     // S7：从「设置」改完面板退回桌面 → SpringBoard 回前台 → 重读设置。
+    __weak DSHPetOverlay *weakPrefs = self;
     if (!_prefsObs) {
-        __weak DSHPetOverlay *weakPrefs = self;
         _prefsObs = [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
                                                                      object:nil
                                                                       queue:[NSOperationQueue mainQueue]
@@ -288,6 +289,12 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
             [weakPrefs applyPrefsNow];
         }];
     }
+
+    // 自检：8 秒还没上屏就把原因写进气泡（绿方块报障用）
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [weakPrefs showSelfCheckBubble];
+    });
 
     // S3：有素材就把方块换成 HEVC-alpha 视频；没素材保持方块当占位。
     BOOL hasPet = [[DSHPetPlayer shared] attachToHostView:_box size:CGSizeMake(petW, petH)];
@@ -725,6 +732,26 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 
 - (void)saveConfig {
     [_cfg writeToFile:kUIConfigPath atomically:YES];
+}
+
+// 绿方块 / 空桌面 的自检提示。
+// 绿方块只说明"没有一帧上屏"，说不出是素材没找到、还是找到了解不出来。
+// 8 秒还没上屏就把结论直接写在气泡里，别人截图就能报障，不用教他抓 syslog。
+- (void)showSelfCheckBubble {
+    if (!_box) return;
+    if ([DSHPetPlayer shared].naturalSize.width > 0) return;   // 已经上屏了，什么都不说
+
+    NSString *root = DSHPetFirstAssetRoot();
+    NSString *tip = root.length
+        ? [NSString stringWithFormat:@"素材找到了（%@），但一帧都没解出来", [root lastPathComponent]]
+        : @"没找到素材包 —— 绿方块就是这个原因";
+    NSString *text = [NSString stringWithFormat:@"%@\n自检报告：/var/mobile/Library/DSHPet/doctor.txt", tip];
+    if (_bubble) {
+        [_bubble showText:text duration:14.0];
+        [self anchorBubble];
+    }
+    DSHPetLog(@"assets", @"selfcheck-fail", @"warn",
+              @{ @"root": root ?: @"(none)", @"tip": tip });
 }
 
 // S7：设置面板改完回桌面时重新读一遍。

@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- PreferenceLoader 入口：设置里出现「小肥娘」这一行，点进去加载 DSHPetPrefs.bundle 的 Root.plist。
+<!-- PreferenceLoader 入口：设置里出现「小肥娘」这一行，点进去加载 DSHPetPrefs.bundle。
 
-     ⚠️ 这里**只能**有 bundle / cell / label 三个键。
-     之前多写了 detail=PSListController + isController=true，iOS 17 的 Preferences 会把
-     DSHPetPrefs.bundle 当成**代码包**去 load，而它是纯 plist 包（没有 CFBundleExecutable），
-     于是弹「未能载入软件包"小肥娘"，因为未能找到其可执行文件的位置」。
-     纯 plist 面板的正确写法就是不带 detail —— 由 PreferenceLoader 自己的控制器读 Root.plist。
+     这里的四个键是有讲究的，别随手删：
+       bundle       —— 指向 /Library/PreferenceBundles/DSHPetPrefs.bundle
+       cell         —— 列表里这一行的控件类型
+       detail       —— bundle 内那个 PSListController 子类（代码 bundle 的核心）
+       isController —— 告诉 loader「detail 是个控制器，不是普通单元格」
+
+     历史：只写 bundle/cell/label 三键时 iOS 17 的设置里**整行都不出现**；
+     只加 detail=PSListController（系统类）时能显示但点进去报「未能载入软件包…未能找到其可执行文件的位置」。
+     现在的 bundle 自带可执行文件（DSHPetPrefs）+ Info.plist 里的 NSPrincipalClass，两条都绕开了。
 
      必须是 XML plist——旧式 NeXTSTEP 花括号写法 plutil 解析不了，CI 的 plist-lint 会直接红。 -->
 <plist version="1.0">
@@ -17,6 +21,10 @@
 		<string>DSHPetPrefs</string>
 		<key>cell</key>
 		<string>PSLinkCell</string>
+		<key>detail</key>
+		<string>DSHPetPrefsRootListController</string>
+		<key>isController</key>
+		<true/>
 		<key>label</key>
 		<string>小肥娘</string>
 	</dict>
