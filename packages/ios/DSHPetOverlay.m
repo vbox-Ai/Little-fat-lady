@@ -349,7 +349,16 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         return;
     }
 
-    NSString *screen = [DSHPetScreen currentScreenTextWithLimit:900];
+    // 安全输入框优先判：系统切到安全键盘时元素 role 就是 AXSecureTextField，
+    // 这比关键词可靠 —— 有的界面只是标题里写着"密码"两个字，并不敏感；
+    // 反过来，有的输入框一个字都不露，只能靠 role 认出来。
+    BOOL secure = NO;
+    NSString *screen = [DSHPetScreen currentScreenTextWithLimit:900 secure:&secure];
+    if (secure) {
+        [[DSHPetScheduler shared] sayReply:@"这屏在输密码吧？我不看，你自己按哦…库"];
+        DSHPetLog(@"screen", @"refused-secure-field", @"info", nil);
+        return;
+    }
     if (screen.length == 0) {
         [[DSHPetScheduler shared] sayReply:@"这一屏好像没什么字…换个有内容的界面再叫我？"];
         DSHPetLog(@"screen", @"empty-result", @"warn", nil);
@@ -389,7 +398,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     }];
 }
 
-- (void)sendChatText:(NSString *)raw {    NSString *text = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+- (void)sendChatText:(NSString *)raw {
+    NSString *text = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (text.length == 0) {
         return;
     }
@@ -810,6 +820,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         if ([df[@"margin"] doubleValue] > 0) _walk.margin = [df[@"margin"] doubleValue];
     }
     _walk.enabled = _cfg[@"wanderEnabled"] ? [_cfg[@"wanderEnabled"] boolValue] : YES;
+    _walk.zone = _cfg[@"wanderZone"] ? [_cfg[@"wanderZone"] integerValue] : 0;
 
     // 走路时播 move 分桶；停下回 idle。分桶都没有就静默（不报错、不卡住）
     _walk.onStartWalking = ^{
