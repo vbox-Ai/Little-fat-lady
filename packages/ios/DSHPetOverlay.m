@@ -167,6 +167,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     DSHPetTodoPanel *_todoPanel;   // S6d：长按弹出的待办清单
     DSHPetMenuPanel *_menuPanel;   // S6d：长按弹出的操作菜单（自绘，不用 UIAlertController）
     DSHPetWalk *_walk;             // S-M1a：行走（单独时钟，拖拽可随时打断）
+    BOOL _powerThrottled;          // S-FIX3：热控降级中（暂停动画/传感器/行走）
     NSTimer *_hideTimer;           // S6d：「隐藏 1 小时」的自动恢复
 }
 
@@ -676,13 +677,33 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         _box.layer.cornerRadius = 0.0;
         _box.layer.borderWidth = 0.0;
 
+        // 加速度计只在"倾斜重力"开着的时候才需要。
+        // 以前是无条件 startAccelerometerUpdates：这是一个常开的 30Hz 传感器通道，
+        // 屏幕黑着、宠物一动不动的时候它也在跑，是发热与耗电的大头之一。
         if (!_motion) {
-        _motion = [[CMMotionManager alloc] init];
-        if (_motion.isAccelerometerAvailable) {
-            _motion.accelerometerUpdateInterval = 1.0 / 30.0;
-            [_motion startAccelerometerUpdates];
+            _motion = [[CMMotionManager alloc] init];
         }
-    }
+        if (_motion.isAccelerometerAvailable) {
+            CGFloat hz = [self tiltGravityEnabled] ? 20.0 : 0.0;
+            _motion.accelerometerUpdateInterval = 1.0 / MAX(hz, 1.0);
+            if (hz > 0.0) {
+                if (!_motion.isAccelerometerActive) [_motion startAccelerometerUpdates];
+            } else if (_motion.isAccelerometerActive) {
+                [_motion stopAccelerometerUpdates];
+            }
+        }
+
+        // S-FIX3：热控。真机上"用一会儿就烫 + 卡"的两个来源是
+        // ①常开的加速度计 ②一直滚动的动画/物理。这里按系统热状态与低电量模式自动降级。
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(onPowerStateChanged:)
+                                                     name:NSProcessInfoThermalStateDidChangeNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(onPowerStateChanged:)
+                                                     name:NSProcessInfoPowerStateDidChangeNotification
+                                                   object:nil];
+        [self applyPowerPolicy:@"boot"];
 
     [[DSHPetAnimator shared] startWithDirectory:@"/var/mobile/Library/DSHPet/assets"];
 
@@ -991,6 +1012,62 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     CGFloat r = [ph[@"restitution"] doubleValue];
     if (r <= 0) r = 0.62;
     return MIN(MAX(r, 0.1), 0.95);
+}
+
+#pragma mark - 热控（S-FIX3）
+
+// 倾斜重力开不开：默认开（和物理面板里的开关同一份配置）
+- (BOOL)tiltGravityEnabled {
+    NSDictionary *ph = _cfg[@"physics"];
+    NSNumber *n = ph[@"tiltGravity"];
+    return n ? [n boolValue] : YES;
+}
+
+// 省电模式：默认开。关掉以后永不自降级（给"我就是要一直动"的用户留个口子）
+- (BOOL)powerSaveEnabled {
+    NSNumber *n = _cfg[@"powerSave"];
+    return n ? [n boolValue] : YES;
+}
+
+- (void)onPowerStateChanged:(NSNotification *)note {
+    [self applyPowerPolicy:note.name];
+}
+
+// 只做三件事：停传感器、停行走、停动画。
+// 为什么不停物理：物理表本来就在静止后自己 invalidate（DSHPetCrew 也一样），
+// 再插一脚容易和"谁负责停表"打架。
+- (void)applyPowerPolicy:(NSString *)why {
+    if (!_window || !_box) return;
+
+    NSProcessInfo *pi = [NSProcessInfo processInfo];
+    NSProcessInfoThermalState ts = pi.thermalState;
+    BOOL low = pi.isLowPowerModeEnabled;
+    BOOL hot = (ts == NSProcessInfoThermalStateSerious || ts == NSProcessInfoThermalStateCritical);
+    BOOL throttle = [self powerSaveEnabled] && (hot || low);
+
+    if (throttle == _powerThrottled) return;
+    _powerThrottled = throttle;
+
+    if (throttle) {
+        if (_walk) [_walk pause];
+        if (_motion && _motion.isAccelerometerActive) [_motion stopAccelerometerUpdates];
+        [[DSHPetPlayer shared] pause];
+        DSHPetLog(@"power", @"throttle", @"warn", @{
+            @"why": why ?: @"?",
+            @"thermal": @(ts),
+            @"lowPower": @(low),
+        });
+    } else {
+        if ([self tiltGravityEnabled] && _motion.isAccelerometerAvailable && !_motion.isAccelerometerActive) {
+            [_motion startAccelerometerUpdates];
+        }
+        if (_walk) [_walk resume];
+        [[DSHPetPlayer shared] play];
+        DSHPetLog(@"power", @"release", @"info", @{
+            @"why": why ?: @"?",
+            @"thermal": @(ts),
+        });
+    }
 }
 
 - (void)startPhysicsWithVelocity:(CGPoint)v {
