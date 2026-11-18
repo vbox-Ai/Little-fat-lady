@@ -23,6 +23,10 @@ static NSArray<NSString *> *DSHPetChatBannedWords(void) {
 
 #pragma mark - Keychain
 
+// 前置声明：DSHPetKCSet 会先删后加，而删除函数定义在它后面。
+// 不声明就是 implicit declaration，-Werror 下直接红（踩过一次）。
+static BOOL DSHPetKCDelete(void);
+
 static NSData *DSHPetKCGet(void) {
     NSDictionary *q = @{
         (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
