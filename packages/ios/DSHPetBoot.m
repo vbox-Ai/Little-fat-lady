@@ -55,31 +55,41 @@ static id DSHPetJSONSafe(id v, int depth) {
     return s ?: @"";
 }
 
-void DSHPetLog(NSString *mod, NSString *evt, NSString *lvl, NSDictionary *kv) {
-    @autoreleasepool {
+static dispatch_queue_t DSHPetLogQueue(void) {
+    static dispatch_queue_t q = NULL;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        q = dispatch_queue_create("com.vboxai.littlefatlady.log", DISPATCH_QUEUE_SERIAL);
+        dispatch_set_target_queue(q, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+    });
+    return q;
+}
+
+// 一次性初始化：建目录 / 铺素材 / 写诊断 / 清老残留。
+//
+// 这段以前是直接摊在 DSHPetLog 里的，于是**每写一条日志就扫一遍 assets 目录**。
+// 日志的调用点每帧都可能有（物理 settle、行走 begin、点击、气泡），
+// 几百毫秒内几十次 contentsOfDirectory + removeItem，全在 SpringBoard 主线程上，
+// 主线程被同步 I/O 占满 → 系统没法把前台 App 推过启动页。
+// 现象就是"装完插件过一会儿，打开任何软件都卡在启动页"。
+// 结论：这些磁盘活一辈子只能干一次。
+static void DSHPetLogSetupOnce(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
         NSFileManager *fm = [NSFileManager defaultManager];
         [fm createDirectoryAtPath:DSHPetLogDir() withIntermediateDirectories:YES attributes:nil error:NULL];
-    // 没有 postinst 了（roothide 的 dpkg 有时执行不了维护脚本），目录由代码自己建
-    for (NSString *d in @[ @"/var/mobile/Library/DSHPet/config",
-                           @"/var/mobile/Library/DSHPet/assets" ]) {
-        [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:NULL];
-    }
-    {
-        static BOOL ensured = NO;
-        if (!ensured) { ensured = YES; DSHPetEnsureAssets(); }
-    }
-    // 诊断先落一份（拷贝还在后台跑，绿方块的机器要能马上把原因发回来）
-    {
-        static BOOL doctored = NO;
-        if (!doctored) { doctored = YES; DSHPetWriteDoctor(@"boot"); }
-    }
-    // 旧版本残留清理 —— 只清「确定是老东西」的那几样，不再按白名单横扫：
-    //   · 根级散放的 .mp4/.mov/.m4v（单路 ProRes 演示片 / 双路时代的散片）
-    //   · color/ 与 matte/ 两个目录（双路合成时代产物，里面全是 320×180 的 mp4，
-    //     留着会被索引器当成候选根，抽到就糊成一片——发虚问题的老根就在这）
-    // 之前这里写的是「不是 color/matte/main.* 就删」，等于每写一条日志
-    // 就把新素材的 idle/ move/ 分桶全删一遍：谁的分桶被删，谁就绿方块。
-    {
+        // 没有 postinst 了（roothide 的 dpkg 有时执行不了维护脚本），目录由代码自己建
+        for (NSString *d in @[ @"/var/mobile/Library/DSHPet/config",
+                               @"/var/mobile/Library/DSHPet/assets" ]) {
+            [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:NULL];
+        }
+        DSHPetEnsureAssets();
+        DSHPetWriteDoctor(@"boot");
+
+        // 旧版本残留清理：只清"确定是老东西"的那几样。
+        //   · 根级散放的 .mp4/.mov/.m4v（单路 ProRes 演示片 / 双路时代的散片）
+        //   · color/ 与 matte/ 两个目录（双路合成产物，320x180 的 mp4，
+        //     留着会被索引器当候选根，抽到就糊成一片——发虚的老根）
         NSString *aroot = @"/var/mobile/Library/DSHPet/assets";
         NSArray<NSString *> *kids = [fm contentsOfDirectoryAtPath:aroot error:NULL] ?: @[];
         for (NSString *k in kids) {
@@ -97,12 +107,18 @@ void DSHPetLog(NSString *mod, NSString *evt, NSString *lvl, NSDictionary *kv) {
                 [fm removeItemAtPath:full error:NULL];
             }
         }
-    }
-    for (NSString *n in @[ @"idle.mov", @"turn.mov", @"click.mov", @"drag.mov", @"sleep.mov", @"demo.mov" ]) {
-        NSString *q = [@"/var/mobile/Library/DSHPet/assets" stringByAppendingPathComponent:n];
-        if ([fm fileExistsAtPath:q]) { [fm removeItemAtPath:q error:NULL]; }
-    }
+        for (NSString *n in @[ @"idle.mov", @"turn.mov", @"click.mov", @"drag.mov", @"sleep.mov", @"demo.mov" ]) {
+            NSString *q = [aroot stringByAppendingPathComponent:n];
+            if ([fm fileExistsAtPath:q]) { [fm removeItemAtPath:q error:NULL]; }
+        }
+    });
+}
 
+void DSHPetLog(NSString *mod, NSString *evt, NSString *lvl, NSDictionary *kv) {
+    // 一次性磁盘初始化（只有第一次真的做事）
+    DSHPetLogSetupOnce();
+
+    @autoreleasepool {
         NSMutableDictionary *rec = [NSMutableDictionary dictionary];
         NSISO8601DateFormatter *df = [[NSISO8601DateFormatter alloc] init];
         rec[@"ts"] = [df stringFromDate:[NSDate date]];
@@ -113,36 +129,60 @@ void DSHPetLog(NSString *mod, NSString *evt, NSString *lvl, NSDictionary *kv) {
         rec[@"ver"] = DSHPET_VERSION_STRING;
         if (kv) [rec addEntriesFromDictionary:kv];
 
+        // 序列化留在调用线程：便宜，且失败也能立刻降级
         NSData *json = nil;
         @try {
             json = [NSJSONSerialization dataWithJSONObject:DSHPetJSONSafe(rec, 0) options:0 error:NULL];
         } @catch (NSException *e) {
-            // 序列化再失败也别抛：写一条最简记录就行
+            json = nil;
+        }
+        NSMutableData *line;
+        if (json) {
+            line = [json mutableCopy];
+            [line appendBytes:"\n" length:1];
+        } else {
             NSString *fallback = [NSString stringWithFormat:
                 @"{\"ts\":\"%@\",\"lvl\":\"%@\",\"mod\":\"%@\",\"evt\":\"%@\",\"pid\":%d,\"ver\":\"%@\",\"note\":\"serialize-failed\"}\n",
                 rec[@"ts"], rec[@"lvl"], rec[@"mod"], rec[@"evt"], (int)getpid(), DSHPET_VERSION_STRING];
-            [[fallback dataUsingEncoding:NSUTF8StringEncoding] writeToFile:DSHPetLogPathForModule(mod ?: @"app") atomically:YES];
-            return;
+            line = [[fallback dataUsingEncoding:NSUTF8StringEncoding] mutableCopy];
         }
-        if (!json) return;
-
-        NSMutableData *line = [json mutableCopy];
-        [line appendBytes:"\n" length:1];
+        if (!line) return;
 
         NSString *path = DSHPetLogPathForModule(mod ?: @"app");
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-        if (!fh) {
-            [line writeToFile:path atomically:YES];
-            return;
-        }
-        @try {
-            [fh seekToEndOfFile];
-            [fh writeData:line];
-        } @catch (__unused NSException *e) {
-            // 写日志永远不许影响主流程
-        } @finally {
-            [fh closeFile];
-        }
+
+        // 真正的写盘一律丢到串行队列：主线程绝不碰文件。
+        dispatch_async(DSHPetLogQueue(), ^{
+            @autoreleasepool {
+                static NSUInteger writes = 0;
+                writes += 1;
+                NSFileManager *fm = [NSFileManager defaultManager];
+
+                // 每 200 条查一次大小；超过 512KB 就改名为 .1（只留一份旧的）。
+                // 不轮转的话日志是无界增长的，越写越慢，最后连 open 都变重。
+                if (writes % 200 == 1) {
+                    NSDictionary *attr = [fm attributesOfItemAtPath:path error:NULL];
+                    if ([attr fileSize] > 512 * 1024) {
+                        NSString *old = [path stringByAppendingString:@".1"];
+                        [fm removeItemAtPath:old error:NULL];
+                        [fm moveItemAtPath:path toPath:old error:NULL];
+                    }
+                }
+
+                NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+                if (!fh) {
+                    [line writeToFile:path atomically:YES];
+                    return;
+                }
+                @try {
+                    [fh seekToEndOfFile];
+                    [fh writeData:line];
+                } @catch (__unused NSException *e) {
+                    // 写日志永远不许影响主流程
+                } @finally {
+                    [fh closeFile];
+                }
+            }
+        });
     }
 }
 
