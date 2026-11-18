@@ -19,11 +19,13 @@ static const CGFloat kRestMax = 16.0;
 @property (nonatomic, assign) BOOL walking;
 @property (nonatomic, assign) BOOL paused;
 @property (nonatomic, assign) CGFloat targetX;
+@property (nonatomic, assign) CGFloat targetY;
 @property (nonatomic, assign) CFTimeInterval nextWalkAt;
 - (void)tick;
 - (void)beginWalk;
 - (void)finishWalk;
 - (CGFloat)clampX:(CGFloat)x;
+- (CGFloat)clampY:(CGFloat)y;
 - (void)scheduleNextWalk;
 @end
 
@@ -151,6 +153,35 @@ static const CGFloat kRestMax = 16.0;
     return MIN(MAX(x, lo), hi);
 }
 
+// 纵向边界。只有 zone 4/5 用得上，而且必须配合「悬停模式」——
+// 否则物理层每帧把她拉回地面，这里算得再准也没用。
+- (CGFloat)clampY:(CGFloat)y {
+    UIView *host = _host;
+    UIView *pet = _pet;
+    if (!host || !pet) {
+        return y;
+    }
+    CGRect b = host.bounds;
+    CGFloat halfH = pet.bounds.size.height * 0.5;
+    CGFloat lo = _margin + halfH;
+    CGFloat hi = b.size.height - _margin - halfH;
+    if (hi < lo) {
+        return b.size.height * 0.5;
+    }
+    if (_zone == 4) {
+        // 上半屏
+        hi = MIN(hi, b.size.height * 0.55 - halfH);
+    } else if (_zone == 5) {
+        // 下半屏
+        lo = MAX(lo, b.size.height * 0.45 + halfH);
+    }
+    if (hi < lo) {
+        lo = _margin + halfH;
+        hi = b.size.height - _margin - halfH;
+    }
+    return MIN(MAX(y, lo), hi);
+}
+
 - (void)beginWalk {
     UIView *host = _host;
     UIView *pet = _pet;
@@ -191,19 +222,34 @@ static const CGFloat kRestMax = 16.0;
 
     target = [self clampX:target];
 
-    if (fabs(target - curX) < _minDist * 0.5) {
-        // 两头都挤着，走不动，等下一轮
+    // 纵向目标：只有 zone 4/5 才挑新高度。其他分区保持当前 y——
+    // y 是物理层的地盘，行走不碰，除非用户显式开了纵向分区（隐含要求悬停模式）。
+    CGFloat targetY = pet.center.y;
+    if (_zone >= 4) {
+        CGFloat yLo = [self clampY:-1e9];
+        CGFloat yHi = [self clampY:1e9];
+        if (yHi > yLo) {
+            targetY = yLo + (CGFloat)arc4random_uniform(10000) / 10000.0 * (yHi - yLo);
+        }
+    }
+
+    BOOL tooShortX = (fabs(target - curX) < _minDist * 0.5);
+    BOOL tooShortY = (_zone < 4) || (fabs(targetY - pet.center.y) < _minDist * 0.5);
+    if (tooShortX && tooShortY) {
+        // 横向被挤住、纵向也不用走，等下一轮
         [self scheduleNextWalk];
         return;
     }
 
     _targetX = target;
+    _targetY = targetY;
     _walking = YES;
     if (_onStartWalking) {
         _onStartWalking();
     }
     DSHPetLog(@"walk", @"begin", @"debug",
-              @{ @"from": @((NSInteger)curX), @"to": @((NSInteger)target) });
+              @{ @"from": @((NSInteger)curX), @"to": @((NSInteger)target),
+                 @"y": @((NSInteger)targetY) });
 }
 
 - (void)finishWalk {
@@ -241,7 +287,16 @@ static const CGFloat kRestMax = 16.0;
 
     CGFloat curX = pet.center.x;
     CGFloat dx = _targetX - curX;
-    if (fabs(dx) <= kArriveDist) {
+
+    // 纵向（zone 4/5）才改 y。前提是宿主已开「悬停模式」，物理层不再抢 center.y；
+    // 没开的时候这里照样只动 x —— 宁可分区不生效，也不能和重力对着拉扯。
+    CGFloat dy = 0;
+    BOOL vertical = (_zone >= 4);
+    if (vertical) {
+        dy = _targetY - pet.center.y;
+    }
+
+    if (fabs(dx) <= kArriveDist && fabs(dy) <= kArriveDist) {
         [self finishWalk];
         return;
     }
@@ -252,9 +307,14 @@ static const CGFloat kRestMax = 16.0;
     CGFloat nx = curX + (dx > 0 ? step : -step);
     nx = [self clampX:nx];
 
-    // 只改 x，y 留给物理。见头文件里"两边都改 y 会打架"那条。
     CGPoint c = pet.center;
     c.x = nx;
+    if (vertical) {
+        // 纵向走慢一点：漂浮感靠"慢"，快了像在弹射
+        CGFloat vstep = MIN(fabs(dy), step * 0.6);
+        CGFloat ny = c.y + (dy > 0 ? vstep : -vstep);
+        c.y = [self clampY:ny];
+    }
     pet.center = c;
 }
 
