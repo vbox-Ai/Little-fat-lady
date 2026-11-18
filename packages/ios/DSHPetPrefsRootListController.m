@@ -135,6 +135,12 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     base.title = @"宿主地址"; base.key = @"bridgeBase"; base.kind = DSHPetRowKindText;
     base.defaultValue = @"https://dsh.vbox.ltd:42429";
 
+    // S-P2：人格与语音。这三项都是运行时每 tick 重读，改完立刻生效，不用重启。
+    DSHPetRow *persona = [self rowSwitch:@"自主性格（自己说话/会闹脾气）" key:@"personaEnabled" dflt:YES];
+    DSHPetRow *voice = [self rowSwitch:@"说话出声" key:@"voiceEnabled" dflt:YES];
+    DSHPetRow *sfx = [self rowSwitch:@"动作音效" key:@"sfxEnabled" dflt:YES];
+    DSHPetRow *quiet = [self rowSwitch:@"免打扰（23:00–08:00 不说话）" key:@"quietHours" dflt:NO];
+
     DSHPetRow *multi = [self rowSwitch:@"多开（多只小肥娘）" key:@"multiPetsEnabled" dflt:NO];
     DSHPetRow *multiMax = [self rowChoice:@"最多几只" key:@"multiPetsMax"
                                    values:@[@1, @2, @3, @4, @5, @6, @7, @8]
@@ -150,9 +156,10 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     doctor.title = @"自检报告路径"; doctor.kind = DSHPetRowKindInfo;
     doctor.staticText = @"/var/mobile/Library/DSHPet/doctor.txt";
 
-    _sectionTitles = @[@"宠物", @"物理与触感", @"会话气泡", @"多开", @"关于"];
+    _sectionTitles = @[@"宠物", @"物理与触感", @"人格与语音", @"会话气泡", @"多开", @"关于"];
     _sections = @[@[petOn, edge, size],
                  @[grav, tilt, haptic, hapticLevel],
+                 @[persona, voice, sfx, quiet],
                  @[bubble, bubbleStatus, bridge, base],
                  @[multi, multiMax, perSession],
                  @[ver, link, doctor]];
