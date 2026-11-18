@@ -22,7 +22,10 @@ export DSHPetPrefs_INSTALL_PATH = /Library/PreferenceBundles
 export DSHPetPrefs_FILES = DSHPetPrefsRootListController.m
 export DSHPetPrefs_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 export DSHPetPrefs_FRAMEWORKS = UIKit Foundation
-export DSHPetPrefs_PRIVATE_FRAMEWORKS = Preferences
+# Preferences 是私有框架，Theos 的 iOS SDK 里没有它的 .tbd（`ld: framework 'Preferences' not found`），
+# 所以不能写 _PRIVATE_FRAMEWORKS。改成动态查找：PSListController 由宿主 Preferences.app
+# 进程自己提供，运行期符号一定在，链接期只需要放行未定义符号。
+export DSHPetPrefs_LDFLAGS = -undefined dynamic_lookup
 
 include $(THEOS)/makefiles/common.mk
 include $(THEOS_MAKE_PATH)/tweak.mk
