@@ -49,12 +49,25 @@ static NSMutableDictionary *DSHPetLoadUIConfig(void) {
 }
 
 static void DSHPetSaveUIConfig(NSDictionary *cfg) {
-    NSString *dir = [kUIConfigPath stringByDeletingLastPathComponent];
-    [[NSFileManager defaultManager] createDirectoryAtPath:dir
-                              withIntermediateDirectories:YES
-                                               attributes:nil
-                                                    error:NULL];
-    [cfg writeToFile:kUIConfigPath atomically:YES];
+    if (!cfg) return;
+    // 拷一份再异步写：调用方随后还会改 _cfg，直接传引用等于写的时候内容已经变了。
+    NSDictionary *snapshot = [cfg copy];
+    static dispatch_queue_t q = NULL;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        q = dispatch_queue_create("com.vboxai.littlefatlady.uiconfig", DISPATCH_QUEUE_SERIAL);
+        dispatch_set_target_queue(q, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+    });
+    dispatch_async(q, ^{
+        @autoreleasepool {
+            NSString *dir = [kUIConfigPath stringByDeletingLastPathComponent];
+            [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                                      withIntermediateDirectories:YES
+                                                       attributes:nil
+                                                            error:NULL];
+            [snapshot writeToFile:kUIConfigPath atomically:YES];
+        }
+    });
 }
 
 #pragma mark - 窗口（只放行方块区域的触摸）
@@ -1142,7 +1155,8 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
 }
 
 - (void)saveConfig {
-    [_cfg writeToFile:kUIConfigPath atomically:YES];
+    // 以前这里直接 writeToFile：捏合/拖拽结束时每帧都可能落盘一次，全在 SpringBoard 主线程。
+    DSHPetSaveUIConfig(_cfg);
 }
 
 // 绿方块 / 空桌面 的自检提示。
