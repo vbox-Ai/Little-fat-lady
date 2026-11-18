@@ -39,6 +39,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) void (^onStartWalking)(void);
 @property (nonatomic, copy, nullable) void (^onStopWalking)(void);
 
+// 避让区（宿主视图坐标系）。返回气泡当前矩形；返回 CGRectZero 表示不需要避让。
+// 用 block 拿而不是传值：气泡每帧都在动，传值会立刻过期。
+@property (nonatomic, copy, nullable) CGRect (^avoidRectProvider)(void);
+
 - (void)start;                 // 开始计时（不是马上走）
 - (void)stop;                  // 彻底停（卸载时）
 - (void)pause;                 // 被拖拽/被甩出时暂停
