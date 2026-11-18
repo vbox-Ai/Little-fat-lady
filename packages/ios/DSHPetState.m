@@ -86,6 +86,8 @@ static NSString *DSHPetStateFilePath(void) {
 @property (nonatomic, assign) BOOL dirty;
 @property (nonatomic, assign) NSTimeInterval lastSaveAt;
 
+- (void)writeAsync:(NSDictionary *)d;
+
 // 私有方法必须先声明：写在 @implementation 后半段又被前半段调用，
 // 会触发 "instance method not found" 警告，CI 是 -Werror，警告即失败。
 - (double)clamp:(double)v lo:(double)lo hi:(double)hi;
@@ -319,17 +321,6 @@ static NSString *DSHPetStateFilePath(void) {
 }
 
 - (void)save {
-    NSString *dir = DSHPetStateDirectory();
-    NSFileManager *fm = [NSFileManager defaultManager];
-    if (![fm fileExistsAtPath:dir]) {
-        NSError *mk = nil;
-        [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:&mk];
-        if (mk) {
-            DSHPetLog(@"state", @"mkdir-fail", @"error", @{@"err": mk.localizedDescription});
-            return;
-        }
-    }
-
     NSDictionary *d = @{
         @"v": @1,
         @"mood": @(self.mood),
@@ -340,20 +331,46 @@ static NSString *DSHPetStateFilePath(void) {
         @"activity": @(self.activity),
         @"savedAt": @([NSDate date].timeIntervalSince1970),
     };
-
-    NSError *err = nil;
-    NSData *data = [NSJSONSerialization dataWithJSONObject:d options:0 error:&err];
-    if (err || data.length == 0) {
-        DSHPetLog(@"state", @"encode-fail", @"error", @{@"err": err.localizedDescription ?: @"empty"});
-        return;
-    }
-    // 原子写：中途被杀不会留下半截文件（半截 JSON 会让下次启动回落默认，等于失忆）
-    if (![data writeToFile:DSHPetStateFilePath() options:NSDataWritingAtomic error:&err]) {
-        DSHPetLog(@"state", @"write-fail", @"error", @{@"err": err.localizedDescription ?: @"unknown"});
-        return;
-    }
+    [self writeAsync:d];
     self.dirty = NO;
     self.lastSaveAt = [NSDate date].timeIntervalSince1970;
+}
+
+// 状态落盘走后台串行队列。
+// 调用点在调度器的 5s tick 上（主线程），以前这里同步 writeToFile + mkdir：
+// 每 30 秒在 SpringBoard 主线程做一次目录检查加原子写，
+// 叠上日志那边的同步 I/O，主线程会被拖到没法响应 App 启动。
+- (void)writeAsync:(NSDictionary *)d {
+    static dispatch_queue_t q = NULL;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        q = dispatch_queue_create("com.vboxai.littlefatlady.state", DISPATCH_QUEUE_SERIAL);
+        dispatch_set_target_queue(q, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+    });
+    dispatch_async(q, ^{
+        @autoreleasepool {
+            NSString *dir = DSHPetStateDirectory();
+            NSFileManager *fm = [NSFileManager defaultManager];
+            if (![fm fileExistsAtPath:dir]) {
+                NSError *mk = nil;
+                [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:&mk];
+                if (mk) {
+                    DSHPetLog(@"state", @"mkdir-fail", @"error", @{@"err": mk.localizedDescription});
+                    return;
+                }
+            }
+            NSError *err = nil;
+            NSData *data = [NSJSONSerialization dataWithJSONObject:d options:0 error:&err];
+            if (err || data.length == 0) {
+                DSHPetLog(@"state", @"encode-fail", @"error", @{@"err": err.localizedDescription ?: @"empty"});
+                return;
+            }
+            // 原子写：中途被杀不会留下半截文件（半截 JSON 会让下次启动回落默认，等于失忆）
+            if (![data writeToFile:DSHPetStateFilePath() options:NSDataWritingAtomic error:&err]) {
+                DSHPetLog(@"state", @"write-fail", @"error", @{@"err": err.localizedDescription ?: @"unknown"});
+            }
+        }
+    });
 }
 
 @end
