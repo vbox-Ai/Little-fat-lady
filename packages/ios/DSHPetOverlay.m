@@ -16,6 +16,7 @@
 #import "DSHPetState.h"
 #import "DSHPetScheduler.h"
 #import "DSHPetVoice.h"
+#import "DSHPetChat.h"
 
 // S2：透明浮层骨架 + 一个可拖动的方块。
 // 本阶段只证明四件事，不做宠物：
@@ -269,7 +270,7 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         return;
     }
 
-    NSArray<NSString *> *titles = @[@"待办清单", @"换个表情", @"连接状态", @"隐藏 1 小时", @"取消"];
+    NSArray<NSString *> *titles = @[@"跟她说话", @"待办清单", @"换个表情", @"连接状态", @"隐藏 1 小时", @"取消"];
     __weak DSHPetOverlay *weakSelf = self;
     _menuPanel = [[DSHPetMenuPanel alloc] initWithTitle:@"小肥娘"
                                                  titles:titles
@@ -277,10 +278,11 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
         DSHPetOverlay *s = weakSelf;
         if (!s) return;
         switch (index) {
-            case 0: [s showTodoPanel]; break;
-            case 1: [s shuffleExpression]; break;
-            case 2: [s showBridgeStatus]; break;
-            case 3: [s hideForAWhile:3600.0]; break;
+            case 0: [s chatWithPet]; break;
+            case 1: [s showTodoPanel]; break;
+            case 2: [s shuffleExpression]; break;
+            case 3: [s showBridgeStatus]; break;
+            case 4: [s hideForAWhile:3600.0]; break;
             default: break;
         }
     }];
@@ -293,8 +295,66 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     DSHPetLog(@"menu", @"open", @"debug", nil);
 }
 
-- (void)shuffleExpression {
-    // play 桶是上游"玩/杂项"那一堆（67 段），最适合当表情包轮播
+#pragma mark - 跟她说话（S-AI4）
+
+// 入口放在长按菜单第一项：桌宠的手势已经被 tap/pan/pinch/longPress 占满，
+// 再加手势会互相打架（MEMORY 里那条 requireGestureRecognizerToFail 卡 0.45s 的坑）。
+// 长按本来就是"操作菜单"的语义，把聊天放第一项最顺手。
+- (void)chatWithPet {
+    if (![[DSHPetChat shared] isConfigured]) {
+        // 没配好不弹框、不报错，直接用她自己的语气说一句，并指路
+        [[DSHPetScheduler shared] sayReply:@"还没接上大模型呢…去「设置 → 小肥娘 → 大模型」填好地址和 Key 吧，库…"];
+        return;
+    }
+    UIViewController *host = _window.rootViewController;
+    if (!host) return;
+
+    UIAlertController *ac = [UIAlertController alertControllerWithTitle:@"跟她说话"
+                                                                message:nil
+                                                         preferredStyle:UIAlertControllerStyleAlert];
+    [ac addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.placeholder = @"说点什么…";
+        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        tf.autocorrectionType = UITextAutocorrectionTypeNo;
+    }];
+    [ac addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    __weak DSHPetOverlay *weakSelf = self;
+    [ac addAction:[UIAlertAction actionWithTitle:@"说"
+                                           style:UIAlertActionStyleDefault
+                                         handler:^(UIAlertAction *a) {
+        [weakSelf sendChatText:ac.textFields.firstObject.text];
+    }]];
+    [host presentViewController:ac animated:YES completion:nil];
+}
+
+- (void)sendChatText:(NSString *)raw {
+    NSString *text = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (text.length == 0) {
+        return;
+    }
+    [[DSHPetScheduler shared] handleEvent:DSHPetEventChat];
+    [[DSHPetState shared] setActivity:DSHPetActivityTalking];
+    DSHPetLog(@"ai", @"ask", @"debug", @{ @"chars": @(text.length) });
+
+    __weak DSHPetOverlay *weakSelf = self;
+    [[DSHPetChat shared] ask:text completion:^(NSString *reply, NSString *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            DSHPetOverlay *s = weakSelf;
+            if (!s) return;
+            if (reply.length > 0) {
+                [[DSHPetScheduler shared] sayReply:reply];
+            } else {
+                // 失败一律静默：气泡里永远不出现 http 500 / 超时 这种字，
+                // 只当"她没听清"，同时把机器码记进日志给开发者看。
+                [[DSHPetScheduler shared] sayReply:@"嗯…刚才走神了，再说一遍嘛"];
+                DSHPetLog(@"ai", @"reply-fail", @"warn", @{ @"code": error ?: @"unknown" });
+            }
+            [[DSHPetState shared] setActivity:DSHPetActivityIdle];
+        });
+    }];
+}
+
+- (void)shuffleExpression {    // play 桶是上游"玩/杂项"那一堆（67 段），最适合当表情包轮播
     BOOL ok = [[DSHPetAnimator shared] playRandomFromCategory:@"play"]
            || [[DSHPetAnimator shared] playRandomFromCategory:@"eat"];
     [[DSHPetHaptics shared] fire:DSHPetHapticLight key:@"menu" minInterval:0.25];
