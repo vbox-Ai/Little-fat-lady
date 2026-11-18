@@ -32,6 +32,10 @@ NS_ASSUME_NONNULL_BEGIN
 // 外部（桥接）拿到会话状态时也可以推一条，走「状态」台词
 - (void)noteStatus:(NSString *)state;
 
+// 外部已经拿到一句可直接显示的话（大模型回复、聊天兜底）时，从这里出去：
+// 气泡 ＋ 语音一次走完，开关与免打扰规则照样生效。
+- (void)sayReply:(NSString *)text;
+
 @end
 
 NS_ASSUME_NONNULL_END
