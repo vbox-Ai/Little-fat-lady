@@ -151,6 +151,22 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     DSHPetRow *sfx = [self rowSwitch:@"动作音效" key:@"sfxEnabled" dflt:YES];
     DSHPetRow *quiet = [self rowSwitch:@"免打扰（23:00–08:00 不说话）" key:@"quietHours" dflt:NO];
 
+    // S-M1c：动作库权重。上游 dsh-pet 把这四类权重放在 animations.categories 里，
+    // 换素材包之后哪类多哪类少会变，写死在代码里就得改代码重发版，所以搬进面板。
+    // 四项全调 0 时 dylib 会回落默认 5:4:3:2，不会让她一直发愣。
+    DSHPetRow *wPlay = [self rowChoice:@"闲置动作·玩耍" key:@"actionWeightPlay"
+                                values:@[@0, @1, @2, @3, @4, @5, @6]
+                                titles:@[@"关", @"1", @"2", @"3", @"4", @"5（默认）", @"6"]];
+    DSHPetRow *wEat = [self rowChoice:@"闲置动作·吃东西" key:@"actionWeightEat"
+                               values:@[@0, @1, @2, @3, @4, @5, @6]
+                               titles:@[@"关", @"1", @"2", @"3", @"4（默认）", @"5", @"6"]];
+    DSHPetRow *wIdle = [self rowChoice:@"闲置动作·发呆" key:@"actionWeightIdle"
+                                values:@[@0, @1, @2, @3, @4, @5, @6]
+                                titles:@[@"关", @"1", @"2", @"3（默认）", @"4", @"5", @"6"]];
+    DSHPetRow *wTurn = [self rowChoice:@"闲置动作·转身" key:@"actionWeightTurn"
+                                values:@[@0, @1, @2, @3, @4, @5, @6]
+                                titles:@[@"关", @"1", @"2（默认）", @"3", @"4", @"5", @"6"]];
+
     // S-AI1：大模型（方案 §十四）。这里每一项 dylib 侧都真的读：
     //   aiEnabled / aiBaseURL / aiModel / aiTemperature / aiMaxTokens / aiVisionEnabled。
     // Key 例外：面板跟 dylib 不是一个进程，碰不到 Keychain item，所以只写 aiKeyPending，
@@ -247,7 +263,7 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     _sectionTitles = @[@"宠物", @"物理与触感", @"人格与语音", @"会话气泡", @"大模型", @"语音合成", @"多开", @"关于"];
     _sections = @[@[petOn, wander, zone, edge, size],
                  @[grav, tilt, haptic, hapticLevel],
-                 @[persona, voice, sfx, quiet],
+                 @[persona, voice, sfx, quiet, wPlay, wEat, wIdle, wTurn],
                  @[bubble, bubbleStatus, bridge, base],
                  @[aiOn, aiBase, aiModel, aiKey, aiTemp, aiTokens, aiVision, aiTest, aiClear],
                  @[ttsEngine, ttsAppID, ttsToken, ttsCluster, ttsVoiceType,
