@@ -291,6 +291,9 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     // 否则物理层每帧把她拽回地面，分区看着像没生效。
     DSHPetRow *floatRow = [self rowSwitch:@"悬停（不落地，可停在半空）" key:@"floatMode" dflt:NO];
     DSHPetRow *tilt = [self rowSwitch:@"倾斜重力（随手机倾斜滑动）" key:@"tiltGravityEnabled" dflt:YES];
+    // S-FIX3：热控。手机一烫就自己停动画/停传感器/停止走动，凉下来再恢复。
+    // 默认开：桌宠是常驻进程，"宁可少动一点，也别把手机变成暖手宝"。
+    DSHPetRow *powerSave = [self rowSwitch:@"省电（发烫或低电量时自动静止）" key:@"powerSave" dflt:YES];
     DSHPetRow *haptic = [self rowSwitch:@"震动反馈" key:@"hapticEnabled" dflt:YES];
     DSHPetRow *hapticLevel = [self rowChoice:@"震动强度" key:@"hapticLevel"
                                       values:@[@"light", @"normal", @"heavy"]
@@ -429,7 +432,7 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
 
     _sectionTitles = @[@"宠物", @"物理与触感", @"人格与语音", @"会话气泡", @"大模型", @"语音合成", @"多开", @"关于"];
     _sections = @[@[petOn, wander, zone, edge, size],
-                 @[grav, floatRow, tilt, haptic, hapticLevel],
+                 @[grav, floatRow, tilt, powerSave, haptic, hapticLevel],
                  @[persona, voice, sfx, quiet, wPlay, wEat, wIdle, wTurn],
                  @[bubble, bubbleStatus, bridge, base],
                  @[aiOn, aiBase, aiModel, aiKey, aiTemp, aiTokens, aiVision, aiTest, aiClear],
