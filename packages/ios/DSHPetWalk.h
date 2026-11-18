@@ -29,6 +29,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat minDist;   // 单次最短距离，默认 60
 @property (nonatomic, assign) CGFloat maxDist;   // 单次最长距离，默认 240
 
+// S-M1b 漫游分区：限定她只在屏幕的某一段活动。
+//   0 全屏 · 1 左半边 · 2 中间三分之一 · 3 右半边
+// 为什么要分区：她总在最下面一条线上来回走，看着像"贴地扫地"；
+// 分区之后可以在"我只想让她待右边"的时候把她关在右边，不用手动拖。
+@property (nonatomic, assign) NSInteger zone;
+
 // 开始走 / 到了（渲染层拿这两个回调播 move 与 idle）
 @property (nonatomic, copy, nullable) void (^onStartWalking)(void);
 @property (nonatomic, copy, nullable) void (^onStopWalking)(void);
