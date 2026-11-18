@@ -14,6 +14,11 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+// 说话起止通知 —— 渲染层靠这两条把宠物切成 TALKING 态（方案 §13.3）。
+// 之所以用通知而不是回调：Voice 是单例，但"谁在听"（主宠 / 多开里的每一只）不固定。
+extern NSString *const DSHPetVoiceDidStartNotification;
+extern NSString *const DSHPetVoiceDidFinishNotification;
+
 @interface DSHPetVoice : NSObject
 
 // 开关与参数（面板「语音」组直接绑这几个）
