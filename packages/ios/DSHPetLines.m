@@ -94,6 +94,7 @@ static NSDictionary *DSHPetFallbackLines(void) {
 // 私有方法前置声明：`pickFrom:key:` 写在 @implementation 后半段、
 // 却被 lineForPath:tone:vars: 先调用，不声明就是 "instance method not found"，-Werror 下直接红。
 - (NSString *)pickFrom:(NSArray<NSString *> *)pool key:(NSString *)key;
+- (void)installFallbackIfPossible;
 @end
 
 @implementation DSHPetLines
@@ -154,6 +155,35 @@ static NSDictionary *DSHPetFallbackLines(void) {
     [self.recent removeAllObjects];
     DSHPetLog(@"lines", @"fallback", @"warn",
               @{@"reason": @"no lines json found", @"roots": @(DSHPetLinesRoots().count)});
+
+    // 自愈：postinst 在 roothide 假根里静默失败是常态（S03 journal 就是这么踩的），
+    // 这时把内置库落盘到可写目录，下次启动就走正常磁盘路径，用户也能自己改台词。
+    [self installFallbackIfPossible];
+}
+
+// 把内置库写盘。注意：本次运行仍然算 "fallback"（loadedFromDisk 保持 NO），
+// 只有下次 reload 读到这个文件才算磁盘库 —— 免得日志里出现"磁盘加载成功"但其实读的是自己刚写的。
+- (void)installFallbackIfPossible {
+    NSError *err = nil;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:self.lib
+                                                   options:NSJSONWritingPrettyPrinted
+                                                     error:&err];
+    if (data.length < 2) {
+        DSHPetLog(@"lines", @"install-skip", @"debug", @{@"err": err.localizedDescription ?: @"serialize"});
+        return;
+    }
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/DSHPet/lines"];
+    if (![fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:&err]) {
+        DSHPetLog(@"lines", @"install-fail", @"warn", @{@"dir": dir, @"err": err.localizedDescription ?: @"mkdir"});
+        return;
+    }
+    NSString *path = [dir stringByAppendingPathComponent:@"zh-Hans.json"];
+    if ([data writeToFile:path atomically:YES]) {
+        DSHPetLog(@"lines", @"installed", @"info", @{@"path": path, @"bytes": @(data.length)});
+    } else {
+        DSHPetLog(@"lines", @"install-fail", @"warn", @{@"path": path, @"err": @"write"});
+    }
 }
 
 #pragma mark - 取词
