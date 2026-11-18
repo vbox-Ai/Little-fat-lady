@@ -122,6 +122,19 @@ static BOOL DSHPetKCDelete(void) {
 
 #pragma mark - Key
 
+// 面板（独立进程）看不到我们的 Keychain item，只能靠偏好域传话：
+//   aiKeyPending —— 用户在设置里刚粘贴的明文，搬进 Keychain 后立刻抹掉
+//   aiKeyStored  —— 给面板显示"已设置 / 未设置"，不含任何密钥信息
+static NSString *const kPrefsDomain = @"com.vboxai.littlefatlady.prefs";
+
+static void DSHPetPrefsWrite(NSString *key, id value) {
+    if (!key.length) return;
+    CFPreferencesSetAppValue((__bridge CFStringRef)key,
+                             (__bridge CFPropertyListRef)value,
+                             (__bridge CFStringRef)kPrefsDomain);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)kPrefsDomain);
+}
+
 + (BOOL)hasAPIKey {
     NSData *d = DSHPetKCGet();
     return d.length > 0;
@@ -131,11 +144,17 @@ static BOOL DSHPetKCDelete(void) {
     NSString *trimmed = [key stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (trimmed.length == 0) {
         BOOL ok = DSHPetKCDelete();
+        DSHPetPrefsWrite(@"aiKeyPending", @"");
+        DSHPetPrefsWrite(@"aiKeyStored", @NO);
         DSHPetLog(@"ai", @"key-unset", @"info", nil);
         return ok;
     }
     NSData *d = [trimmed dataUsingEncoding:NSUTF8StringEncoding];
     BOOL ok = DSHPetKCSet(d);
+    if (ok) {
+        DSHPetPrefsWrite(@"aiKeyPending", @"");
+        DSHPetPrefsWrite(@"aiKeyStored", @YES);
+    }
     // 只记"设置成功"，绝不记 Key 本身，也不记长度以外的任何特征
     DSHPetLog(@"ai", ok ? @"key-set" : @"key-set-fail", ok ? @"info" : @"error", nil);
     return ok;
@@ -143,16 +162,29 @@ static BOOL DSHPetKCDelete(void) {
 
 + (void)clearAPIKey {
     DSHPetKCDelete();
+    DSHPetPrefsWrite(@"aiKeyPending", @"");
+    DSHPetPrefsWrite(@"aiKeyStored", @NO);
     DSHPetLog(@"ai", @"key-unset", @"info", nil);
 }
 
 - (NSString *)apiKey {
     NSData *d = DSHPetKCGet();
-    if (d.length == 0) {
-        return @"";
+    if (d.length > 0) {
+        NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+        if (s.length > 0) {
+            return s;
+        }
     }
-    NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
-    return s ?: @"";
+    // S-AI1：面板只能写偏好域（它跟 dylib 是两个进程，碰不到我们的 Keychain item），
+    // 所以面板把用户粘贴的 Key 放在 aiKeyPending 里；这里第一次真正用到时搬进 Keychain，
+    // 搬完立刻把明文从 plist 抹掉。这样"用户不用理解 Keychain"，但落盘只有密文。
+    NSString *pending = [DSHPetPrefs stringForKey:@"aiKeyPending" fallback:@""];
+    if (pending.length > 0) {
+        if ([[self class] setAPIKey:pending]) {
+            DSHPetLog(@"ai", @"key-migrated", @"info", @{ @"chars": @(pending.length) });
+        }
+    }
+    return @"";
 }
 
 #pragma mark - 配置
