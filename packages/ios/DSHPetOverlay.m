@@ -1017,6 +1017,23 @@ static void DSHPetSaveUIConfig(NSDictionary *cfg) {
     if (minX > maxX) minX = maxX = b.width / 2.0;
     if (minY > maxY) minY = maxY = b.height / 2.0;
 
+    // S-M1e：悬停模式。开了以后这里直接收工 —— 不积分重力、不判落地、不反弹，
+    // 只把她按在屏内，然后停表。位置完全交给行走（DSHPetWalk 改 center.y）。
+    // 为什么要在这里拦：物理与行走都写 center，两边同帧写就是互相拉扯，
+    // 表现是"每帧被拽回地面"或"悬在半空抖"。一个时刻只能有一个写入者。
+    BOOL floatMode = _cfg[@"floatMode"] ? [_cfg[@"floatMode"] boolValue] : NO;
+    if (floatMode) {
+        CGPoint c = _box.center;
+        c.x = MIN(MAX(c.x, minX), maxX);
+        c.y = MIN(MAX(c.y, minY), maxY);
+        if (!CGPointEqualToPoint(c, _box.center)) {
+            _box.center = c;
+        }
+        _vel = CGPointZero;
+        [self stopPhysics];
+        return;
+    }
+
     CGFloat gx = 0, gy = [self physGravity];
     NSDictionary *ph = _cfg[@"physics"];
     BOOL tilt = ph[@"tiltGravity"] ? [ph[@"tiltGravity"] boolValue] : YES;
