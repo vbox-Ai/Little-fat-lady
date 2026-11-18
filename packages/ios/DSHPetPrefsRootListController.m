@@ -38,6 +38,57 @@
 static NSString *const kDSHPetPrefsDomain = @"com.vboxai.littlefatlady.prefs";
 static NSString *const kDSHPetRepoURL = @"https://github.com/vbox-Ai/Little-fat-lady";
 
+#pragma mark - 面板专用日志（v0.1.0-138）
+
+// 面板跑在 Preferences 进程里，跟 SpringBoard 那个 dylib 不是一个进程，
+// 用不到 DSHPetLog。这里自带一个最小日志：只追加、只写盘、不扫目录。
+// 路径跟 dylib 同一棵树：~/Library/DSHPet/logs/prefs.log（Preferences 的 home 就是 /var/mobile）。
+// 为什么必须单独有一份：面板闪退时 Preferences 自己不会留痕，dylib 日志里也什么都看不到，
+// 只能靠这份日志知道"点到哪一行、崩在哪一步"。
+static void DSHPetPrefsLogv(NSString *fmt, va_list ap) {
+    @autoreleasepool {
+        NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/DSHPet/logs"];
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{
+            [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                                      withIntermediateDirectories:YES
+                                                       attributes:nil
+                                                            error:NULL];
+        });
+        NSString *line = [NSString stringWithFormat:@"%@ %@\n",
+                          [NSDate date], msg ?: @""];
+        NSString *path = [dir stringByAppendingPathComponent:@"prefs.log"];
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+            if (!fh) {
+                [line writeToFile:path atomically:NO encoding:NSUTF8StringEncoding error:NULL];
+                return;
+            }
+            @try {
+                [fh seekToEndOfFile];
+                [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+                [fh closeFile];
+            } @catch (__unused NSException *e) {}
+        });
+    }
+}
+
+static void DSHPetPrefsLog(NSString *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    DSHPetPrefsLogv(fmt, ap);
+    va_end(ap);
+}
+
+// 未捕获异常兜底：把异常名、原因、栈写进同一个日志。
+// 面板以前闪退是"什么都没留下"，用户只能说"它闪了"，有了这条才知道是哪一行、什么异常。
+static void DSHPetPrefsUncaught(NSException *e) {
+    NSString *trace = [e.callStackSymbols componentsJoinedByString:@"\n"];
+    if (trace.length > 2000) trace = [trace substringToIndex:2000];
+    DSHPetPrefsLog(@"UNCAUGHT %@: %@\n%@", e.name, e.reason, trace);
+}
+
 #pragma mark - 行模型
 
 typedef NS_ENUM(NSInteger, DSHPetRowKind) {
@@ -68,8 +119,111 @@ typedef NS_ENUM(NSInteger, DSHPetRowKind) {
 @interface DSHPetPrefsRootListController : PSListController <UITableViewDataSource, UITableViewDelegate>
 @end
 
+// ── 表代理（v0.1.0-138，修「点一下设置项就闪退」）─────────────────────────────
+//
+// 崩溃日志（Preferences 进程，EXC_CRASH / SIGABRT / abort() called，2026-11-19 06:29–06:54 共 5 份）：
+//   10  DSHPetPrefs  <我们的 reloadRowsAtIndexPaths:>  +23920
+//    9  UIKitCore    -[UITableView reloadRowsAtIndexPaths:withRowAnimation:]
+//    7  UIKitCore    -[UITableView _endCellAnimationsWithContext:]
+//    6  UIKitCore    -[UITableViewRowData ensureAllSectionsAreValid]
+//    4  UIKitCore    -[UITableView _titleAlignmentForHeaderInSection:]
+//    3  Preferences   -[PSListController tableView:titleAlignmentForHeaderInSection:]
+//    → 抛 ObjC 异常 → objc_exception_throw → abort()
+//
+// 根因不是某一个方法，而是**架构层面**的：我们把 `delegate = self` 设成了 PSListController 子类，
+// 于是 UIKit 每次刷新都会调到 PSListController 自己实现的一堆 delegate 方法
+// （estimatedHeight / titleAlignment / willDisplay…）。这些方法内部要按 section 去查
+// 它自己的 specifier 数组，而我们是自绘面板、`specifiers` 恒返回 @[]，
+// 于是「表里有行、specifier 里没行」→ 数组越界/空指针 → 抛异常 → abort。
+//
+// 上次只补了 estimatedHeight 一个，这次是 titleAlignment 冒出来 —— 补一个冒一个，补不完。
+// 所以换掉整条链路：**把 delegate/dataSource 指向一个纯 NSObject 代理**，
+// PSListController 从此收不到任何表格回调，它的 specifier 链彻底不参与。
+@interface DSHPetTableProxy : NSObject <UITableViewDataSource, UITableViewDelegate>
+@property (nonatomic, weak) id<UITableViewDataSource, UITableViewDelegate> host;
+@end
+
+@implementation DSHPetTableProxy
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tv {
+    id<UITableViewDataSource> h = self.host;
+    if ([h respondsToSelector:@selector(numberOfSectionsInTableView:)]) {
+        return [h numberOfSectionsInTableView:tv];
+    }
+    return 1;
+}
+
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section {
+    id<UITableViewDataSource> h = self.host;
+    if ([h respondsToSelector:@selector(tableView:numberOfRowsInSection:)]) {
+        return [h tableView:tv numberOfRowsInSection:section];
+    }
+    return 0;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    id<UITableViewDataSource> h = self.host;
+    if ([h respondsToSelector:@selector(tableView:cellForRowAtIndexPath:)]) {
+        return [h tableView:tv cellForRowAtIndexPath:indexPath];
+    }
+    return [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"fallback"];
+}
+
+- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    id<UITableViewDelegate> h = self.host;
+    if ([h respondsToSelector:@selector(tableView:didSelectRowAtIndexPath:)]) {
+        [h tableView:tv didSelectRowAtIndexPath:indexPath];
+    }
+    // insetGrouped 的选中高亮要自己收，否则点完一直蓝着
+    [tv deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+- (CGFloat)tableView:(UITableView *)tv heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    id<UITableViewDelegate> h = self.host;
+    if ([h respondsToSelector:@selector(tableView:heightForRowAtIndexPath:)]) {
+        return [h tableView:tv heightForRowAtIndexPath:indexPath];
+    }
+    return 44.0;
+}
+
+// 固定值，不参与 AutoLayout 估算：估算链一旦走到，UIKit 会反复问高度，
+// 自绘表里行高本来就是系统标准高度，没必要估。
+- (CGFloat)tableView:(UITableView *)tv estimatedHeightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 44.0;
+}
+
+- (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)section {
+    id<UITableViewDataSource> h = self.host;
+    if ([h respondsToSelector:@selector(tableView:titleForHeaderInSection:)]) {
+        return [h tableView:tv titleForHeaderInSection:section];
+    }
+    return nil;
+}
+
+- (UIView *)tableView:(UITableView *)tv viewForHeaderInSection:(NSInteger)section {
+    id<UITableViewDelegate> h = self.host;
+    if ([h respondsToSelector:@selector(tableView:viewForHeaderInSection:)]) {
+        return [h tableView:tv viewForHeaderInSection:section];
+    }
+    return nil;
+}
+
+- (CGFloat)tableView:(UITableView *)tv heightForHeaderInSection:(NSInteger)section {
+    return UITableViewAutomaticDimension;
+}
+
+- (CGFloat)tableView:(UITableView *)tv heightForFooterInSection:(NSInteger)section {
+    return 0.0;   // 分组间距靠 insetGrouped 自带的头，不要再吃 footer 高度
+}
+
+- (UIView *)tableView:(UITableView *)tv viewForFooterInSection:(NSInteger)section { return nil; }
+- (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)section { return nil; }
+
+@end
+
 @implementation DSHPetPrefsRootListController {
     UITableView *_table;
+    DSHPetTableProxy *_proxy;   // v0.1.0-138：表格回调全走它，PSListController 收不到
     NSArray<NSArray<DSHPetRow *> *> *_sections;
     NSArray<NSString *> *_sectionTitles;
 }
@@ -263,6 +417,15 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     DSHPetRow *doctor = [DSHPetRow new];
     doctor.title = @"自检报告路径"; doctor.kind = DSHPetRowKindInfo;
     doctor.staticText = @"/var/mobile/Library/DSHPet/doctor.txt";
+    // 自保护恢复入口：插件连续崩 3 次会自己写 disabled 停掉自己，
+    // 那时候桌面上什么都没有，但设置面板还能打开（它是另一个进程）——
+    // 所以"恢复"这件事必须能在面板里一键完成，不该再要求用户去 Filza。
+    DSHPetRow *guard = [DSHPetRow new];
+    guard.title = @"解除自动停用（恢复显示）"; guard.kind = DSHPetRowKindAction;
+    guard.actionName = @"guardReset";
+    DSHPetRow *logPath = [DSHPetRow new];
+    logPath.title = @"问题日志"; logPath.kind = DSHPetRowKindInfo;
+    logPath.staticText = @"/var/mobile/Library/DSHPet/logs/";
 
     _sectionTitles = @[@"宠物", @"物理与触感", @"人格与语音", @"会话气泡", @"大模型", @"语音合成", @"多开", @"关于"];
     _sections = @[@[petOn, wander, zone, edge, size],
@@ -274,7 +437,7 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
                    ttsBase, ttsModel, ttsVoice, ttsAPIKey, ttsSpeed, ttsPitch,
                    ttsHint, ttsTest, ttsPurge],
                  @[multi, multiMax, perSession],
-                 @[ver, link, doctor]];
+                 @[ver, link, doctor, logPath, guard]];
 }
 
 #pragma mark - 生命周期
@@ -288,10 +451,16 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
 
     _table = [[UITableView alloc] initWithFrame:root.bounds style:UITableViewStyleInsetGrouped];
     _table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    _table.dataSource = self;
-    _table.delegate = self;
+    // 关键：dataSource/delegate 都指向代理对象，不指向 self。
+    // self 是 PSListController 子类，一旦当 delegate，UIKit 就会调到 PSListController
+    // 自己那套按 specifier 取值的私有实现（estimatedHeight / titleAlignment …），
+    // 而我们的 specifier 恒为空 → 崩。详见文件头 DSHPetTableProxy 的注释。
+    _proxy = [DSHPetTableProxy new];
+    _proxy.host = self;
+    _table.dataSource = _proxy;
+    _table.delegate = _proxy;
     _table.rowHeight = UITableViewAutomaticDimension;
-    _table.estimatedRowHeight = 46.0;
+    _table.estimatedRowHeight = 44.0;
     [root addSubview:_table];
 
     self.view = root;
@@ -457,27 +626,48 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tv deselectRowAtIndexPath:indexPath animated:YES];
-    DSHPetRow *row = _sections[(NSUInteger)indexPath.section][(NSUInteger)indexPath.row];
+    NSInteger sec = indexPath.section, rw = indexPath.row;
+    if (sec < 0 || (NSUInteger)sec >= _sections.count) {
+        DSHPetPrefsLog(@"tap out-of-range section=%ld", (long)sec);
+        return;
+    }
+    NSArray<DSHPetRow *> *rows = _sections[(NSUInteger)sec];
+    if (rw < 0 || (NSUInteger)rw >= rows.count) {
+        DSHPetPrefsLog(@"tap out-of-range section=%ld row=%ld count=%lu",
+                       (long)sec, (long)rw, (unsigned long)rows.count);
+        return;
+    }
+    DSHPetRow *row = rows[(NSUInteger)rw];
+    DSHPetPrefsLog(@"tap [%ld,%ld] %@ kind=%ld", (long)sec, (long)rw, row.title ?: @"?", (long)row.kind);
 
-    if (row.kind == DSHPetRowKindChoice) {
-        NSInteger i = [self indexOfRow:row value:[self valueForRow:row]];
-        NSInteger next = (i + 1) % (NSInteger)row.values.count;
-        DSHPetWrite(row.key, row.values[(NSUInteger)next]);
-        [tv reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
-        return;
-    }
-    if (row.kind == DSHPetRowKindLink) {
-        NSURL *u = [NSURL URLWithString:row.linkURL];
-        if (u) [[UIApplication sharedApplication] openURL:u options:@{} completionHandler:nil];
-        return;
-    }
-    if (row.kind == DSHPetRowKindText || row.kind == DSHPetRowKindSecret) {
-        [self promptForText:row indexPath:indexPath];
-        return;
-    }
-    if (row.kind == DSHPetRowKindAction) {
-        [self runActionRow:row];
+    // 整个分发包在 @try 里：某一项自己出错，最多是这一项没反应 + 日志留痕，
+    // 不至于让整个「设置」App 挂掉。面板里每个动作都涉及跨进程/网络，
+    // 谁也不知道下一次会因为什么抛异常。
+    @try {
+        if (row.kind == DSHPetRowKindChoice) {
+            NSInteger i = [self indexOfRow:row value:[self valueForRow:row]];
+            NSInteger next = (i + 1) % (NSInteger)MAX((NSUInteger)1, row.values.count);
+            DSHPetWrite(row.key, row.values[(NSUInteger)next]);
+            // 不用 reloadRowsAtIndexPaths：它走 _endCellAnimations 那条链，
+            // 要求"刷新前后行数一致"，一旦模型和表不一致就抛 NSInternalInconsistency。
+            // 全表刷新在 40 行这个量级上是零成本，换来的是不会崩。
+            [tv reloadData];
+            return;
+        }
+        if (row.kind == DSHPetRowKindLink) {
+            NSURL *u = [NSURL URLWithString:row.linkURL];
+            if (u) [[UIApplication sharedApplication] openURL:u options:@{} completionHandler:nil];
+            return;
+        }
+        if (row.kind == DSHPetRowKindText || row.kind == DSHPetRowKindSecret) {
+            [self promptForText:row indexPath:indexPath];
+            return;
+        }
+        if (row.kind == DSHPetRowKindAction) {
+            [self runActionRow:row];
+        }
+    } @catch (NSException *e) {
+        DSHPetPrefsLog(@"tap-exception %@: %@", e.name, e.reason);
     }
 }
 
@@ -532,7 +722,37 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
         [ac addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];
         [self presentViewController:ac animated:YES completion:nil];
         [_table reloadData];
+    } else if ([row.actionName isEqualToString:@"guardReset"]) {
+        [self resetGuard];
     }
+}
+
+// 解除自动停用：删掉 disabled / disabled.txt / boot-guard.json 三个文件。
+// 面板跑在 Preferences 进程里，写 /var/mobile 有权限（同 mobile 用户），所以能一键恢复。
+- (void)resetGuard {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSArray<NSString *> *files = @[ @"/var/mobile/Library/DSHPet/disabled",
+                                    @"/var/mobile/Library/DSHPet/disabled.txt",
+                                    @"/var/mobile/Library/DSHPet/boot-guard.json" ];
+    NSMutableArray<NSString *> *removed = [NSMutableArray array];
+    for (NSString *p in files) {
+        if ([fm fileExistsAtPath:p]) {
+            if ([fm removeItemAtPath:p error:NULL]) {
+                [removed addObject:[p lastPathComponent]];
+            }
+        }
+    }
+    DSHPetPrefsLog(@"guard-reset removed=%@", [removed componentsJoinedByString:@","] ?: @"(none)");
+    NSString *msg = removed.count
+        ? [NSString stringWithFormat:@"已清除：%@。\n\n注销或重启后小肥娘会重新出现（下次若再连续崩 3 次，还会自动停用）。",
+                                     [removed componentsJoinedByString:@"、"]]
+        : @"没有找到停用标记，说明当前没有被自动停用。";
+    UIAlertController *ac = [UIAlertController alertControllerWithTitle:@"解除自动停用"
+                                                               message:msg
+                                                        preferredStyle:UIAlertControllerStyleAlert];
+    [ac addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:ac animated:YES completion:nil];
+    [_table reloadData];
 }
 
 // 测试连接：面板自己发一次 GET {base}/models。
@@ -627,11 +847,25 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     [ac addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
         NSString *text = ac.textFields.firstObject.text ?: @"";
         DSHPetPrefsRootListController *s = weakSelf;
-        // 密钥行：空串保存 = 删除（跟面板文案一致），dylib 看到空就不搬进 Keychain
-        DSHPetWrite(row.key, text);
-        [s->_table reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+        if (!s) return;
+        DSHPetPrefsLog(@"save key=%@ len=%lu", row.key ?: @"?", (unsigned long)text.length);
+        @try {
+            // 密钥行：空串保存 = 删除（跟面板文案一致），dylib 看到空就不搬进 Keychain
+            DSHPetWrite(row.key, text);
+            [s->_table reloadData];
+        } @catch (NSException *e) {
+            DSHPetPrefsLog(@"save-exception %@: %@", e.name, e.reason);
+        }
     }]];
     [self presentViewController:ac animated:YES completion:nil];
+}
+
+// 面板被加载时记一笔 + 装未捕获异常处理器。
+// 有了这条，用户说"点一下就闪"时，prefs.log 里至少能看到加载了几组、
+// 最后点的是哪一行、抛的是什么异常——以前什么都没有，只能靠猜。
++ (void)load {
+    NSSetUncaughtExceptionHandler(&DSHPetPrefsUncaught);
+    DSHPetPrefsLog(@"bundle load ok");
 }
 
 @end
