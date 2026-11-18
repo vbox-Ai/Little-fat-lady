@@ -119,8 +119,8 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     DSHPetRow *wander = [self rowSwitch:@"自动漫游（自己走来走去）" key:@"wanderEnabled" dflt:YES];
     // S-M1b 漫游分区：她只在选定那一段来回走（嫌她乱跑就锁一边）
     DSHPetRow *zone = [self rowChoice:@"漫游范围" key:@"wanderZone"
-                               values:@[@0, @1, @2, @3]
-                               titles:@[@"全屏", @"左半边", @"中间", @"右半边"]];
+                               values:@[@0, @1, @2, @3, @4, @5]
+                               titles:@[@"全屏", @"左半边", @"中间", @"右半边", @"上半屏", @"下半屏"]];
     zone.defaultValue = @0;
     DSHPetRow *edge = [self rowChoice:@"贴边间距" key:@"edgePreset"
                                values:@[@0, @1, @2]
@@ -132,6 +132,10 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
     size.defaultValue = @0.30;
 
     DSHPetRow *grav = [self rowSwitch:@"重力（松手下落）" key:@"gravityEnabled" dflt:YES];
+    // S-M1e：悬停模式。开了以后物理层不再积分重力/判落地，位置交给行走，
+    // 她就能停在屏幕中间而不是一直贴底。选「上半屏 / 下半屏」时必须开这个，
+    // 否则物理层每帧把她拽回地面，分区看着像没生效。
+    DSHPetRow *floatRow = [self rowSwitch:@"悬停（不落地，可停在半空）" key:@"floatMode" dflt:NO];
     DSHPetRow *tilt = [self rowSwitch:@"倾斜重力（随手机倾斜滑动）" key:@"tiltGravityEnabled" dflt:YES];
     DSHPetRow *haptic = [self rowSwitch:@"震动反馈" key:@"hapticEnabled" dflt:YES];
     DSHPetRow *hapticLevel = [self rowChoice:@"震动强度" key:@"hapticLevel"
@@ -262,7 +266,7 @@ static BOOL DSHPetReadBool(NSString *key, BOOL dflt) {
 
     _sectionTitles = @[@"宠物", @"物理与触感", @"人格与语音", @"会话气泡", @"大模型", @"语音合成", @"多开", @"关于"];
     _sections = @[@[petOn, wander, zone, edge, size],
-                 @[grav, tilt, haptic, hapticLevel],
+                 @[grav, floatRow, tilt, haptic, hapticLevel],
                  @[persona, voice, sfx, quiet, wPlay, wEat, wIdle, wTurn],
                  @[bubble, bubbleStatus, bridge, base],
                  @[aiOn, aiBase, aiModel, aiKey, aiTemp, aiTokens, aiVision, aiTest, aiClear],
